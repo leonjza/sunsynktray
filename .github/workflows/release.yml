@@ -38,10 +38,8 @@ jobs:
         shell: bash
         run: |
           TAG="${GITHUB_REF_NAME#v}"
-          SHORT_SHA="$(git rev-parse --short HEAD)"
           CLEAN_TAG="${TAG%%-*}"
           echo "version_base=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "version_full=${TAG}+${SHORT_SHA}" >> "$GITHUB_OUTPUT"
           echo "assembly_version=${CLEAN_TAG}.0" >> "$GITHUB_OUTPUT"
 
       - name: Publish application
@@ -55,7 +53,7 @@ jobs:
           -p:Version=${{ steps.version.outputs.version_base }}
           -p:AssemblyVersion=${{ steps.version.outputs.assembly_version }}
           -p:FileVersion=${{ steps.version.outputs.assembly_version }}
-          -p:InformationalVersion=${{ steps.version.outputs.version_full }}
+          -p:InformationalVersion=${{ steps.version.outputs.version_base }}
           -p:ContinuousIntegrationBuild=true
         shell: pwsh
 
@@ -74,28 +72,28 @@ jobs:
       - name: Package portable zip
         run: |
           New-Item -ItemType Directory -Force -Path SunSynkTrayWin\\artifacts | Out-Null
-          Compress-Archive -Path "$env:PUBLISH_DIR\*" -DestinationPath "SunSynkTrayWin\\artifacts\\SunSynkTrayWin-portable-${{ steps.version.outputs.version_full }}.zip"
+          Compress-Archive -Path "$env:PUBLISH_DIR\*" -DestinationPath "SunSynkTrayWin\\artifacts\\SunSynkTrayWin-portable-${{ steps.version.outputs.version_base }}.zip"
         shell: pwsh
 
       - name: Upload portable artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SunSynkTrayWin-portable-${{ steps.version.outputs.version_full }}
-          path: SunSynkTrayWin/artifacts/SunSynkTrayWin-portable-${{ steps.version.outputs.version_full }}.zip
+          name: SunSynkTrayWin-portable-${{ steps.version.outputs.version_base }}
+          path: SunSynkTrayWin/artifacts/SunSynkTrayWin-portable-${{ steps.version.outputs.version_base }}.zip
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SunSynkTrayWin-installer-${{ steps.version.outputs.version_full }}
+          name: SunSynkTrayWin-installer-${{ steps.version.outputs.version_base }}
           path: SunSynkTrayWin/artifacts/installer/SunSynkTrayWinSetup.exe
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
-          name: SunSynkTray ${{ steps.version.outputs.version_full }}
+          name: SunSynkTray ${{ steps.version.outputs.version_base }}
           files: |
-            SunSynkTrayWin/artifacts/SunSynkTrayWin-portable-${{ steps.version.outputs.version_full }}.zip
+            SunSynkTrayWin/artifacts/SunSynkTrayWin-portable-${{ steps.version.outputs.version_base }}.zip
             SunSynkTrayWin/artifacts/installer/SunSynkTrayWinSetup.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
