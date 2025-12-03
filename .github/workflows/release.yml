@@ -38,6 +38,7 @@ jobs:
         shell: bash
         run: |
           TAG="${GITHUB_REF_NAME#v}"
+          if [ -z "$TAG" ]; then TAG="0.0.0"; fi
           CLEAN_TAG="${TAG%%-*}"
           echo "version_base=${TAG}" >> "$GITHUB_OUTPUT"
           echo "assembly_version=${CLEAN_TAG}.0" >> "$GITHUB_OUTPUT"

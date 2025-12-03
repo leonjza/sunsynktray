@@ -17,6 +17,7 @@
 AppId={{6C6ACDED-0F1B-43A0-963D-00CF7D2C9876}}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher=sunsynktray
 AppPublisherURL=https://github.com/leonjza/sunsynktray
 DefaultDirName={autopf64}\{#MyAppName}
