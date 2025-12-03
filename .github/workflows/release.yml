@@ -8,10 +8,10 @@ on:
 env:
   PROJECT_PATH: SunSynkTrayWin/SunSynkTrayWin/SunSynkTrayWin.csproj
   PROJECT_ROOT: SunSynkTrayWin
-  PUBLISH_DIR: SunSynkTrayWin/SunSynkTrayWin/bin/Release/net10.0-windows/win-x64/publish
-  PUBLISH_DIR_WIN: SunSynkTrayWin\\SunSynkTrayWin\\bin\\Release\\net10.0-windows\\win-x64\\publish
+  PUBLISH_DIR: SunSynkTrayWin/SunSynkTrayWin/bin/Release/net8.0-windows/win-x64/publish
+  PUBLISH_DIR_WIN: ${{ github.workspace }}\\SunSynkTrayWin\\SunSynkTrayWin\\bin\\Release\\net8.0-windows\\win-x64\\publish
   INSTALLER_SCRIPT: SunSynkTrayWin\\SunSynkTrayWin\\installer\\SunSynkTrayWin.iss
-  INSTALLER_OUTPUT: SunSynkTrayWin\\artifacts\\installer
+  INSTALLER_OUTPUT: ${{ github.workspace }}\\SunSynkTrayWin\\artifacts\\installer
 
 permissions:
   contents: write
@@ -27,8 +27,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "10.0.x"
-          include-prerelease: true
+          dotnet-version: "8.0.x"
 
       - name: Restore
         run: dotnet restore $env:PROJECT_PATH
