@@ -43,14 +43,13 @@ jobs:
           echo "version_base=${TAG}" >> "$GITHUB_OUTPUT"
           echo "assembly_version=${CLEAN_TAG}.0" >> "$GITHUB_OUTPUT"
 
-      - name: Publish application
+      - name: Publish application (runtime-dependent, smaller portable)
         run: >
           dotnet publish $env:PROJECT_PATH
           -c Release
           -r win-x64
-          --self-contained true
-          -p:PublishSingleFile=true
-          -p:IncludeNativeLibrariesForSelfExtract=true
+          --self-contained false
+          -p:PublishSingleFile=false
           -p:Version=${{ steps.version.outputs.version_base }}
           -p:AssemblyVersion=${{ steps.version.outputs.assembly_version }}
           -p:FileVersion=${{ steps.version.outputs.assembly_version }}
@@ -65,7 +64,7 @@ jobs:
       - name: Build installer
         run: >
           iscc $env:INSTALLER_SCRIPT
-          /dMyAppVersion="${{ steps.version.outputs.version_full }}"
+          /dMyAppVersion="${{ steps.version.outputs.version_base }}"
           /dMyPublishDir="$env:PUBLISH_DIR_WIN"
           /dMyOutputDir="$env:INSTALLER_OUTPUT"
         shell: pwsh
