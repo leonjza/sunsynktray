@@ -1,0 +1,35 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Compile Update="Controls\BindableControl.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Update="Controls\DayChartControl.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Update="Controls\PowerFlowViewControl.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Update="Controls\StatusSummaryControl.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Update="MainForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="MainForm.Polling.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="MainForm.Settings.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="MainForm.State.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="MainForm.Theme.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="MainForm.Tray.cs">
+      <SubType>Form</SubType>
+    </Compile>
+  </ItemGroup>
+</Project>

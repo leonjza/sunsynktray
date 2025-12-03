@@ -1,0 +1,38 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableWindowsFormsHighDpiAutoResizing>true</EnableWindowsFormsHighDpiAutoResizing>
+    <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Content Include="..\sunsynk.ico">
+      <Link>sunsynk.ico</Link>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <EmbeddedResource Remove="MainForm.*.resx" />
+    <EmbeddedResource Include="MainForm.resx">
+      <DependentUpon>MainForm.cs</DependentUpon>
+    </EmbeddedResource>
+    <Compile Update="MainForm.Polling.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Update="MainForm.Settings.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Update="MainForm.State.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Update="MainForm.Theme.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Update="MainForm.Tray.cs">
+      <SubType>Code</SubType>
+    </Compile>
+  </ItemGroup>
+
+</Project>
