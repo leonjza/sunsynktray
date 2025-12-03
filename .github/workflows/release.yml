@@ -1,0 +1,102 @@
+name: Build Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  PROJECT_PATH: SunSynkTrayWin/SunSynkTrayWin/SunSynkTrayWin.csproj
+  PROJECT_ROOT: SunSynkTrayWin
+  PUBLISH_DIR: SunSynkTrayWin/SunSynkTrayWin/bin/Release/net10.0-windows/win-x64/publish
+  PUBLISH_DIR_WIN: SunSynkTrayWin\\SunSynkTrayWin\\bin\\Release\\net10.0-windows\\win-x64\\publish
+  INSTALLER_SCRIPT: SunSynkTrayWin\\SunSynkTrayWin\\installer\\SunSynkTrayWin.iss
+  INSTALLER_OUTPUT: SunSynkTrayWin\\artifacts\\installer
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+          include-prerelease: true
+
+      - name: Restore
+        run: dotnet restore $env:PROJECT_PATH
+        shell: pwsh
+
+      - name: Compute versions
+        id: version
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          SHORT_SHA="$(git rev-parse --short HEAD)"
+          CLEAN_TAG="${TAG%%-*}"
+          echo "version_base=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version_full=${TAG}+${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "assembly_version=${CLEAN_TAG}.0" >> "$GITHUB_OUTPUT"
+
+      - name: Publish application
+        run: >
+          dotnet publish $env:PROJECT_PATH
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:Version=${{ steps.version.outputs.version_base }}
+          -p:AssemblyVersion=${{ steps.version.outputs.assembly_version }}
+          -p:FileVersion=${{ steps.version.outputs.assembly_version }}
+          -p:InformationalVersion=${{ steps.version.outputs.version_full }}
+          -p:ContinuousIntegrationBuild=true
+        shell: pwsh
+
+      - name: Install Inno Setup
+        run: choco install -y innosetup
+        shell: pwsh
+
+      - name: Build installer
+        run: >
+          iscc $env:INSTALLER_SCRIPT
+          /dMyAppVersion="${{ steps.version.outputs.version_full }}"
+          /dMyPublishDir="$env:PUBLISH_DIR_WIN"
+          /dMyOutputDir="$env:INSTALLER_OUTPUT"
+        shell: pwsh
+
+      - name: Package portable zip
+        run: |
+          New-Item -ItemType Directory -Force -Path SunSynkTrayWin\\artifacts | Out-Null
+          Compress-Archive -Path "$env:PUBLISH_DIR\*" -DestinationPath "SunSynkTrayWin\\artifacts\\SunSynkTrayWin-portable-${{ steps.version.outputs.version_full }}.zip"
+        shell: pwsh
+
+      - name: Upload portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SunSynkTrayWin-portable-${{ steps.version.outputs.version_full }}
+          path: SunSynkTrayWin/artifacts/SunSynkTrayWin-portable-${{ steps.version.outputs.version_full }}.zip
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SunSynkTrayWin-installer-${{ steps.version.outputs.version_full }}
+          path: SunSynkTrayWin/artifacts/installer/SunSynkTrayWinSetup.exe
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: SunSynkTray ${{ steps.version.outputs.version_full }}
+          files: |
+            SunSynkTrayWin/artifacts/SunSynkTrayWin-portable-${{ steps.version.outputs.version_full }}.zip
+            SunSynkTrayWin/artifacts/installer/SunSynkTrayWinSetup.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
