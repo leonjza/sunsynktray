@@ -32,46 +32,53 @@ public partial class MainForm
         statusSummaryControl.BackColor = palette.Surface;
         statusSummaryControl.ApplyPalette(palette);
         liveActionsPanel.BackColor = palette.Surface;
-        settingsLayout.BackColor = palette.Window;
-        readinessPanel.BackColor = palette.Surface;
         if (_settingsForm != null)
         {
             _settingsForm.BackColor = palette.Window;
+            _settingsForm.settingsLayout.BackColor = palette.Window;
+            // Readiness UI removed from settings form.
             ThemeManager.ApplyWindowTheme(_settingsForm.Handle, theme);
+            _settingsForm.cloudGroupBox.ForeColor = palette.Text;
+            _settingsForm.dataGroupBox.ForeColor = palette.Text;
+            _settingsForm.appGroupBox.ForeColor = palette.Text;
+            _settingsForm.logGroupBox.ForeColor = palette.Text;
         }
 
-        Control[] primaryLabels =
+        if (_settingsForm != null)
         {
-            readinessStatusLabel, usernameLabel, passwordLabel, pollIntervalLabel,
-            plantLabel, selectedPlantLabel, authLogLabel, credentialsHintLabel
-        };
-        foreach (Label label in primaryLabels)
-        {
-            StyleLabel(label, palette);
+            Control[] primaryLabels =
+            {
+                _settingsForm.usernameLabel, _settingsForm.passwordLabel, _settingsForm.pollIntervalLabel,
+                _settingsForm.plantLabel, _settingsForm.selectedPlantLabel, _settingsForm.authLogLabel, _settingsForm.credentialsHintLabel
+            };
+            foreach (Label label in primaryLabels)
+            {
+                StyleLabel(label, palette);
+            }
+
+            StyleCheckbox(_settingsForm.startOnBootCheckBox, palette);
+            StyleCheckbox(_settingsForm.themeToggleCheckBox, palette);
+            StyleLabel(_settingsForm.selectedPlantLabel, palette);
+            StyleLabel(_settingsForm.credentialsHintLabel, palette);
+
+            StyleButton(_settingsForm.testConnectionButton, palette, isPrimary: true);
+            StyleButton(_settingsForm.saveSettingsButton, palette, isPrimary: true);
+            StyleButton(_settingsForm.cancelSettingsButton, palette);
+            StyleButton(_settingsForm.resetSettingsButton, palette);
+
+            StyleInput(_settingsForm.usernameTextBox, palette);
+            StyleInput(_settingsForm.passwordTextBox, palette);
+            StyleInput(_settingsForm.authLogTextBox, palette);
+            StyleInput(_settingsForm.pollIntervalNumeric, palette);
+            _settingsForm.credentialsHintLabel.ForeColor = palette.SubtleText;
+
+            _settingsForm.plantListBox.BackColor = palette.InputBackground;
+            _settingsForm.plantListBox.ForeColor = palette.Text;
+            _settingsForm.plantListBox.BorderStyle = BorderStyle.FixedSingle;
         }
-        readinessPanel.BackColor = Color.Transparent;
-        StyleCheckbox(startOnBootCheckBox, palette);
-        StyleCheckbox(themeToggleCheckBox, palette);
-        StyleLabel(readinessStatusLabel, palette);
-        StyleLabel(selectedPlantLabel, palette);
-        StyleLabel(credentialsHintLabel, palette);
 
         StyleButton(refreshNowButton, palette, isPrimary: true);
         StyleButton(pauseResumeButton, palette);
-        StyleButton(testConnectionButton, palette, isPrimary: true);
-        StyleButton(saveSettingsButton, palette, isPrimary: true);
-        StyleButton(cancelSettingsButton, palette);
-        StyleButton(resetSettingsButton, palette);
-
-        StyleInput(usernameTextBox, palette);
-        StyleInput(passwordTextBox, palette);
-        StyleInput(authLogTextBox, palette);
-        StyleInput(pollIntervalNumeric, palette);
-        credentialsHintLabel.ForeColor = palette.SubtleText;
-
-        plantListBox.BackColor = palette.InputBackground;
-        plantListBox.ForeColor = palette.Text;
-        plantListBox.BorderStyle = BorderStyle.FixedSingle;
 
         dayChart.SetPalette(palette);
         flowView.SetPalette(palette);

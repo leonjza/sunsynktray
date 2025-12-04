@@ -7,14 +7,13 @@ public partial class MainForm
 {
     private void BindSettingsToState()
     {
-        usernameTextBox.DataBindings.Add("Text", _appState.Settings, nameof(_appState.Settings.Username), false, DataSourceUpdateMode.OnPropertyChanged);
-        passwordTextBox.DataBindings.Add("Text", _appState.Settings, nameof(_appState.Settings.Password), false, DataSourceUpdateMode.OnPropertyChanged);
-        pollIntervalNumeric.DataBindings.Add("Value", _appState.Settings, nameof(_appState.Settings.PollIntervalSeconds), true, DataSourceUpdateMode.OnPropertyChanged);
-        startOnBootCheckBox.DataBindings.Add("Checked", _appState.Settings, nameof(_appState.Settings.StartOnBoot), false, DataSourceUpdateMode.OnPropertyChanged);
-        themeToggleCheckBox.DataBindings.Add("Checked", _appState.Settings, nameof(_appState.Settings.UseDarkMode), false, DataSourceUpdateMode.OnPropertyChanged);
+        SettingsForm.usernameTextBox.DataBindings.Add("Text", _appState.Settings, nameof(_appState.Settings.Username), false, DataSourceUpdateMode.OnPropertyChanged);
+        SettingsForm.passwordTextBox.DataBindings.Add("Text", _appState.Settings, nameof(_appState.Settings.Password), false, DataSourceUpdateMode.OnPropertyChanged);
+        SettingsForm.pollIntervalNumeric.DataBindings.Add("Value", _appState.Settings, nameof(_appState.Settings.PollIntervalSeconds), true, DataSourceUpdateMode.OnPropertyChanged);
+        SettingsForm.startOnBootCheckBox.DataBindings.Add("Checked", _appState.Settings, nameof(_appState.Settings.StartOnBoot), false, DataSourceUpdateMode.OnPropertyChanged);
+        SettingsForm.themeToggleCheckBox.DataBindings.Add("Checked", _appState.Settings, nameof(_appState.Settings.UseDarkMode), false, DataSourceUpdateMode.OnPropertyChanged);
 
-        readinessStatusLabel.DataBindings.Add("Text", _statusViewModel, nameof(_statusViewModel.ReadinessText), false, DataSourceUpdateMode.OnPropertyChanged);
-        readinessDot.DataBindings.Add("BackColor", _statusViewModel, nameof(_statusViewModel.ReadinessColor), false, DataSourceUpdateMode.OnPropertyChanged);
+        // Readiness UI was removed from SettingsForm; no bindings needed.
 
         _appState.StateChanged += AppStateOnStateChanged;
     }

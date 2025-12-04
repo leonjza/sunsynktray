@@ -28,577 +28,744 @@ partial class MainForm
     /// </summary>
     private void InitializeComponent()
     {
-        components = new System.ComponentModel.Container();
-        System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(MainForm));
-        trayIcon = new NotifyIcon(components);
-        trayMenu = new ContextMenuStrip(components);
-        openMenuItem = new ToolStripMenuItem();
-        refreshMenuItem = new ToolStripMenuItem();
-        pauseResumeMenuItem = new ToolStripMenuItem();
-        traySeparator = new ToolStripSeparator();
-        exitMenuItem = new ToolStripMenuItem();
-        mainMenu = new MenuStrip();
-        fileMenuItem = new ToolStripMenuItem();
-        settingsMenuItem = new ToolStripMenuItem();
-        quitMenuItem = new ToolStripMenuItem();
-        aboutMenuItem = new ToolStripMenuItem();
-        liveLayout = new TableLayoutPanel();
-        liveTopBarLayout = new TableLayoutPanel();
-        statusSummaryControl = new SunSynkTrayWin.Controls.StatusSummaryControl();
-        flowView = new SunSynkTrayWin.Controls.PowerFlowViewControl();
-        dayChart = new SunSynkTrayWin.Controls.DayChartControl();
-        liveActionsPanel = new FlowLayoutPanel();
-        refreshNowButton = new Button();
-        pauseResumeButton = new Button();
-        settingsLayout = new TableLayoutPanel();
-        readinessPanel = new FlowLayoutPanel();
-        readinessDot = new Panel();
-        readinessStatusLabel = new Label();
-        usernameLabel = new Label();
-        usernameTextBox = new TextBox();
-        passwordLabel = new Label();
-        passwordTextBox = new TextBox();
-        testConnectionButton = new Button();
-        pollIntervalLabel = new Label();
-        pollIntervalNumeric = new NumericUpDown();
-        startOnBootCheckBox = new CheckBox();
-        plantLabel = new Label();
-        plantListBox = new ListBox();
-        selectedPlantLabel = new Label();
-        settingsButtonPanel = new FlowLayoutPanel();
-        saveSettingsButton = new Button();
-        cancelSettingsButton = new Button();
-        resetSettingsButton = new Button();
-        authLogLabel = new Label();
-        authLogTextBox = new TextBox();
-        credentialsHintLabel = new Label();
-        themeToggleCheckBox = new CheckBox();
-        trayMenu.SuspendLayout();
-        mainMenu.SuspendLayout();
-        liveLayout.SuspendLayout();
-        liveTopBarLayout.SuspendLayout();
-        liveActionsPanel.SuspendLayout();
-        settingsLayout.SuspendLayout();
-        readinessPanel.SuspendLayout();
-        ((System.ComponentModel.ISupportInitialize)pollIntervalNumeric).BeginInit();
-        settingsButtonPanel.SuspendLayout();
-        SuspendLayout();
-        // 
-        // trayIcon
-        // 
-        trayIcon.ContextMenuStrip = trayMenu;
-        trayIcon.Icon = null;
-        trayIcon.Text = "SunSynk Tray";
-        trayIcon.Visible = true;
-        trayIcon.DoubleClick += TrayIcon_DoubleClick;
-        // 
-        // trayMenu
-        // 
-        trayMenu.ImageScalingSize = new Size(32, 32);
-        trayMenu.Items.AddRange(new ToolStripItem[] { openMenuItem, refreshMenuItem, pauseResumeMenuItem, traySeparator, exitMenuItem });
-        trayMenu.Name = "trayMenu";
-        trayMenu.Size = new Size(231, 162);
-        // 
-        // openMenuItem
-        // 
-        openMenuItem.Name = "openMenuItem";
-        openMenuItem.Size = new Size(230, 38);
-        openMenuItem.Text = "Open";
-        openMenuItem.Click += OpenMenuItem_Click;
-        // 
-        // refreshMenuItem
-        // 
-        refreshMenuItem.Name = "refreshMenuItem";
-        refreshMenuItem.Size = new Size(230, 38);
-        refreshMenuItem.Text = "Refresh now";
-        refreshMenuItem.Click += RefreshMenuItem_Click;
-        // 
-        // pauseResumeMenuItem
-        // 
-        pauseResumeMenuItem.Name = "pauseResumeMenuItem";
-        pauseResumeMenuItem.Size = new Size(230, 38);
-        pauseResumeMenuItem.Text = "Pause polling";
-        pauseResumeMenuItem.Click += PauseResumeMenuItem_Click;
-        // 
-        // traySeparator
-        // 
-        traySeparator.Name = "traySeparator";
-        traySeparator.Size = new Size(227, 6);
-        // 
-        // exitMenuItem
-        // 
-        exitMenuItem.Name = "exitMenuItem";
-        exitMenuItem.Size = new Size(230, 38);
-        exitMenuItem.Text = "Quit";
-        exitMenuItem.Click += ExitMenuItem_Click;
-        // 
-        // mainMenu
-        // 
-        mainMenu.ImageScalingSize = new Size(24, 24);
-        mainMenu.Items.AddRange(new ToolStripItem[] { fileMenuItem });
-        mainMenu.Location = new Point(0, 0);
-        mainMenu.Name = "mainMenu";
-        mainMenu.Padding = new Padding(10, 3, 0, 3);
-        mainMenu.Size = new Size(1671, 42);
-        mainMenu.TabIndex = 1;
-        mainMenu.Text = "mainMenu";
-        // 
-        // fileMenuItem
-        // 
-        fileMenuItem.DropDownItems.AddRange(new ToolStripItem[] { settingsMenuItem, aboutMenuItem, quitMenuItem });
-        fileMenuItem.Name = "fileMenuItem";
-        fileMenuItem.Size = new Size(71, 36);
-        fileMenuItem.Text = "File";
-        // 
-        // settingsMenuItem
-        // 
-        settingsMenuItem.Name = "settingsMenuItem";
-        settingsMenuItem.Size = new Size(233, 44);
-        settingsMenuItem.Text = "Settings";
-        settingsMenuItem.Click += SettingsMenuItem_Click;
-        // 
-        // quitMenuItem
-        // 
-        quitMenuItem.Name = "quitMenuItem";
-        quitMenuItem.Size = new Size(233, 44);
-        quitMenuItem.Text = "Quit";
-        quitMenuItem.Click += ExitMenuItem_Click;
-        // 
-        // aboutMenuItem
-        // 
-        aboutMenuItem.Name = "aboutMenuItem";
-        aboutMenuItem.Size = new Size(233, 44);
-        aboutMenuItem.Text = "About";
-        aboutMenuItem.Click += AboutMenuItem_Click;
-        // 
-        // liveLayout
-        // 
-        liveLayout.ColumnCount = 1;
-        liveLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        liveLayout.Controls.Add(liveTopBarLayout, 0, 0);
-        liveLayout.Controls.Add(flowView, 0, 1);
-        liveLayout.Controls.Add(dayChart, 0, 2);
-        liveLayout.Controls.Add(liveActionsPanel, 0, 3);
-        liveLayout.Dock = DockStyle.Fill;
-        liveLayout.Location = new Point(0, 42);
-        liveLayout.Margin = new Padding(0);
-        liveLayout.Name = "liveLayout";
-        liveLayout.RowCount = 4;
-        liveLayout.RowStyles.Add(new RowStyle());
-        liveLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 40F));
-        liveLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 60F));
-        liveLayout.RowStyles.Add(new RowStyle());
-        liveLayout.Size = new Size(1671, 1172);
-        liveLayout.TabIndex = 0;
-        // 
-        // liveLayout
-        // 
-        // liveTopBarLayout
-        // 
-        liveTopBarLayout.AutoSize = true;
-        liveTopBarLayout.ColumnCount = 1;
-        liveTopBarLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        liveTopBarLayout.Controls.Add(statusSummaryControl, 0, 0);
-        liveTopBarLayout.Dock = DockStyle.Fill;
-        liveTopBarLayout.Location = new Point(0, 0);
-        liveTopBarLayout.Margin = new Padding(0);
-        liveTopBarLayout.Name = "liveTopBarLayout";
-        liveTopBarLayout.RowCount = 1;
-        liveTopBarLayout.RowStyles.Add(new RowStyle());
-        liveTopBarLayout.Size = new Size(1671, 140);
-        liveTopBarLayout.TabIndex = 7;
-        // 
-        // statusSummaryControl
-        // 
-        statusSummaryControl.AutoSize = true;
-        statusSummaryControl.Dock = DockStyle.Fill;
-        statusSummaryControl.Location = new Point(6, 6);
-        statusSummaryControl.Margin = new Padding(6);
-        statusSummaryControl.Name = "statusSummaryControl";
-        statusSummaryControl.Size = new Size(1659, 128);
-        statusSummaryControl.TabIndex = 8;
-        // 
-        // flowView
-        // 
-        flowView.BackColor = SystemColors.Window;
-        flowView.Dock = DockStyle.Fill;
-        flowView.Location = new Point(0, 140);
-        flowView.Margin = new Padding(0);
-        flowView.MinimumSize = new Size(0, 220);
-        flowView.Name = "flowView";
-        flowView.Padding = new Padding(24);
-        flowView.Size = new Size(1663, 380);
-        flowView.TabIndex = 7;
-        // 
-        // dayChart
-        // 
-        dayChart.BackColor = SystemColors.Window;
-        dayChart.Dock = DockStyle.Fill;
-        dayChart.Location = new Point(0, 520);
-        dayChart.Margin = new Padding(0);
-        dayChart.MinimumSize = new Size(0, 140);
-        dayChart.Name = "dayChart";
-        dayChart.Size = new Size(1663, 573);
-        dayChart.TabIndex = 4;
-        // 
-        // liveActionsPanel
-        // 
-        liveActionsPanel.AutoSize = true;
-        liveActionsPanel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        liveActionsPanel.Controls.Add(refreshNowButton);
-        liveActionsPanel.Controls.Add(pauseResumeButton);
-        liveActionsPanel.Dock = DockStyle.Fill;
-        liveActionsPanel.Location = new Point(0, 1093);
-        liveActionsPanel.Margin = new Padding(0);
-        liveActionsPanel.Name = "liveActionsPanel";
-        liveActionsPanel.Padding = new Padding(6, 6, 6, 10);
-        liveActionsPanel.Size = new Size(1663, 70);
-        liveActionsPanel.TabIndex = 5;
-        // 
-        // refreshNowButton
-        // 
-        refreshNowButton.AutoSize = true;
-        refreshNowButton.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        refreshNowButton.Location = new Point(12, 12);
-        refreshNowButton.Margin = new Padding(6);
-        refreshNowButton.Name = "refreshNowButton";
-        refreshNowButton.TabIndex = 0;
-        refreshNowButton.Text = "Refresh now";
-        refreshNowButton.UseVisualStyleBackColor = true;
-        refreshNowButton.Click += RefreshNowButton_Click;
-        // 
-        // pauseResumeButton
-        // 
-        pauseResumeButton.AutoSize = true;
-        pauseResumeButton.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        pauseResumeButton.Location = new Point(194, 12);
-        pauseResumeButton.Margin = new Padding(6);
-        pauseResumeButton.Name = "pauseResumeButton";
-        pauseResumeButton.TabIndex = 1;
-        pauseResumeButton.Text = "Pause polling";
-        pauseResumeButton.UseVisualStyleBackColor = true;
-        pauseResumeButton.Click += PauseResumeButton_Click;
-        // 
-        // settingsLayout
-        // 
-        settingsLayout.AutoSize = true;
-        settingsLayout.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        settingsLayout.ColumnCount = 2;
-        settingsLayout.ColumnStyles.Add(new ColumnStyle());
-        settingsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        settingsLayout.Controls.Add(readinessPanel, 1, 0);
-        settingsLayout.Controls.Add(usernameLabel, 0, 1);
-        settingsLayout.Controls.Add(usernameTextBox, 1, 1);
-        settingsLayout.Controls.Add(passwordLabel, 0, 2);
-        settingsLayout.Controls.Add(passwordTextBox, 1, 2);
-        settingsLayout.Controls.Add(testConnectionButton, 1, 3);
-        settingsLayout.Controls.Add(pollIntervalLabel, 0, 4);
-        settingsLayout.Controls.Add(pollIntervalNumeric, 1, 4);
-        settingsLayout.Controls.Add(startOnBootCheckBox, 1, 5);
-        settingsLayout.Controls.Add(themeToggleCheckBox, 1, 6);
-        settingsLayout.Controls.Add(plantLabel, 0, 7);
-        settingsLayout.Controls.Add(plantListBox, 1, 7);
-        settingsLayout.Controls.Add(selectedPlantLabel, 1, 8);
-        settingsLayout.Controls.Add(settingsButtonPanel, 1, 9);
-        settingsLayout.Controls.Add(authLogLabel, 0, 10);
-        settingsLayout.Controls.Add(authLogTextBox, 1, 10);
-        settingsLayout.Dock = DockStyle.Fill;
-        settingsLayout.Location = new Point(10, 10);
-        settingsLayout.Margin = new Padding(4);
-        settingsLayout.Name = "settingsLayout";
-        settingsLayout.RowCount = 11;
-        settingsLayout.RowStyles.Add(new RowStyle());
-        settingsLayout.RowStyles.Add(new RowStyle());
-        settingsLayout.RowStyles.Add(new RowStyle());
-        settingsLayout.RowStyles.Add(new RowStyle());
-        settingsLayout.RowStyles.Add(new RowStyle());
-        settingsLayout.RowStyles.Add(new RowStyle());
-        settingsLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        settingsLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 256F));
-        settingsLayout.RowStyles.Add(new RowStyle()); // selected plant label
-        settingsLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // buttons
-        settingsLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 110F)); // auth log (approx 5 rows)
-        settingsLayout.Size = new Size(1617, 1397);
-        settingsLayout.TabIndex = 0;
-        // 
-        // readinessPanel
-        // 
-        readinessPanel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        readinessPanel.AutoSize = true;
-        readinessPanel.Controls.Add(readinessDot);
-        readinessPanel.Controls.Add(readinessStatusLabel);
-        readinessPanel.FlowDirection = FlowDirection.RightToLeft;
-        readinessPanel.Location = new Point(1350, 6);
-        readinessPanel.Margin = new Padding(6);
-        readinessPanel.Name = "readinessPanel";
-        readinessPanel.Size = new Size(261, 40);
-        readinessPanel.TabIndex = 0;
-        readinessPanel.WrapContents = false;
-        readinessPanel.Visible = false;
-        // 
-        // readinessDot
-        // 
-        readinessDot.BackColor = Color.OrangeRed;
-        readinessDot.BorderStyle = BorderStyle.FixedSingle;
-        readinessDot.Location = new Point(226, 6);
-        readinessDot.Margin = new Padding(6, 6, 11, 6);
-        readinessDot.Name = "readinessDot";
-        readinessDot.Size = new Size(24, 28);
-        readinessDot.TabIndex = 0;
-        // 
-        // readinessStatusLabel
-        // 
-        readinessStatusLabel.AutoSize = true;
-        readinessStatusLabel.Location = new Point(6, 4);
-        readinessStatusLabel.Margin = new Padding(6, 4, 6, 0);
-        readinessStatusLabel.Name = "readinessStatusLabel";
-        readinessStatusLabel.Size = new Size(208, 32);
-        readinessStatusLabel.TabIndex = 1;
-        readinessStatusLabel.Text = "Not authenticated";
-        // 
-        // usernameLabel
-        // 
-        usernameLabel.AutoSize = true;
-        usernameLabel.Location = new Point(6, 52);
-        usernameLabel.Margin = new Padding(6, 0, 6, 0);
-        usernameLabel.Name = "usernameLabel";
-        usernameLabel.Size = new Size(121, 32);
-        usernameLabel.TabIndex = 1;
-        usernameLabel.Text = "Username";
-        // 
-        // usernameTextBox
-        // 
-        usernameTextBox.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-        usernameTextBox.Location = new Point(182, 58);
-        usernameTextBox.Margin = new Padding(6);
-        usernameTextBox.Name = "usernameTextBox";
-        usernameTextBox.Size = new Size(1429, 39);
-        usernameTextBox.TabIndex = 2;
-        // 
-        // passwordLabel
-        // 
-        passwordLabel.AutoSize = true;
-        passwordLabel.Location = new Point(6, 103);
-        passwordLabel.Margin = new Padding(6, 0, 6, 0);
-        passwordLabel.Name = "passwordLabel";
-        passwordLabel.Size = new Size(111, 32);
-        passwordLabel.TabIndex = 3;
-        passwordLabel.Text = "Password";
-        // 
-        // passwordTextBox
-        // 
-        passwordTextBox.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-        passwordTextBox.Location = new Point(182, 109);
-        passwordTextBox.Margin = new Padding(6);
-        passwordTextBox.Name = "passwordTextBox";
-        passwordTextBox.Size = new Size(1429, 39);
-        passwordTextBox.TabIndex = 4;
-        passwordTextBox.UseSystemPasswordChar = true;
-        // 
-        // testConnectionButton
-        // 
-        testConnectionButton.AutoSize = true;
-        testConnectionButton.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        testConnectionButton.Location = new Point(182, 160);
-        testConnectionButton.Margin = new Padding(6, 6, 6, 21);
-        testConnectionButton.Name = "testConnectionButton";
-        testConnectionButton.TabIndex = 5;
-        testConnectionButton.Text = "Get plants";
-        testConnectionButton.UseVisualStyleBackColor = true;
-        testConnectionButton.Click += TestConnectionButton_Click;
-        // 
-        // pollIntervalLabel
-        // 
-        pollIntervalLabel.AutoSize = true;
-        pollIntervalLabel.Location = new Point(6, 231);
-        pollIntervalLabel.Margin = new Padding(6, 0, 6, 0);
-        pollIntervalLabel.Name = "pollIntervalLabel";
-        pollIntervalLabel.Size = new Size(138, 32);
-        pollIntervalLabel.TabIndex = 6;
-        pollIntervalLabel.Text = "Poll interval";
-        // 
-        // pollIntervalNumeric
-        // 
-        pollIntervalNumeric.Anchor = AnchorStyles.Left | AnchorStyles.Right;
-        pollIntervalNumeric.Location = new Point(182, 231);
-        pollIntervalNumeric.Margin = new Padding(6, 0, 6, 0);
-        pollIntervalNumeric.Maximum = new decimal(new int[] { 900, 0, 0, 0 });
-        pollIntervalNumeric.Minimum = new decimal(new int[] { 30, 0, 0, 0 });
-        pollIntervalNumeric.Name = "pollIntervalNumeric";
-        pollIntervalNumeric.Size = new Size(1429, 39);
-        pollIntervalNumeric.TabIndex = 7;
-        pollIntervalNumeric.Value = new decimal(new int[] { 60, 0, 0, 0 });
-        // 
-        // startOnBootCheckBox
-        // 
-        startOnBootCheckBox.AutoSize = true;
-        startOnBootCheckBox.Location = new Point(182, 276);
-        startOnBootCheckBox.Margin = new Padding(6);
-        startOnBootCheckBox.Name = "startOnBootCheckBox";
-        startOnBootCheckBox.Size = new Size(351, 36);
-        startOnBootCheckBox.TabIndex = 8;
-        startOnBootCheckBox.Text = "Start when Windows signs in";
-        startOnBootCheckBox.UseVisualStyleBackColor = true;
-        // 
-        // themeToggleCheckBox
-        // 
-        themeToggleCheckBox.AutoSize = true;
-        themeToggleCheckBox.Location = new Point(182, 336);
-        themeToggleCheckBox.Margin = new Padding(6);
-        themeToggleCheckBox.Name = "themeToggleCheckBox";
-        themeToggleCheckBox.Size = new Size(175, 36);
-        themeToggleCheckBox.TabIndex = 18;
-        themeToggleCheckBox.Text = "Use dark mode";
-        themeToggleCheckBox.UseVisualStyleBackColor = true;
-        // 
-        // plantLabel
-        // 
-        plantLabel.AutoSize = true;
-        plantLabel.Location = new Point(6, 388);
-        plantLabel.Margin = new Padding(6, 0, 6, 0);
-        plantLabel.Name = "plantLabel";
-        plantLabel.Size = new Size(164, 32);
-        plantLabel.TabIndex = 9;
-        plantLabel.Text = "Available sites";
-        // 
-        // plantListBox
-        // 
-        plantListBox.Dock = DockStyle.Fill;
-        plantListBox.FormattingEnabled = true;
-        plantListBox.IntegralHeight = false;
-        plantListBox.ItemHeight = 32;
-        plantListBox.Location = new Point(182, 394);
-        plantListBox.Margin = new Padding(6);
-        plantListBox.Name = "plantListBox";
-        plantListBox.Size = new Size(1429, 244);
-        plantListBox.TabIndex = 10;
-        plantListBox.SelectedIndexChanged += PlantListBox_SelectedIndexChanged;
-        plantListBox.Format += PlantListBox_Format;
-        // 
-        // selectedPlantLabel
-        // 
-        selectedPlantLabel.AutoSize = true;
-        selectedPlantLabel.Location = new Point(182, 608);
-        selectedPlantLabel.Margin = new Padding(6, 0, 6, 0);
-        selectedPlantLabel.Name = "selectedPlantLabel";
-        selectedPlantLabel.Size = new Size(247, 32);
-        selectedPlantLabel.TabIndex = 11;
-        selectedPlantLabel.Text = "Selected plant: (none)";
-        // settingsButtonPanel
-        // 
-        settingsButtonPanel.AutoSize = true;
-        settingsButtonPanel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        settingsButtonPanel.Controls.Add(saveSettingsButton);
-        settingsButtonPanel.Controls.Add(cancelSettingsButton);
-        settingsButtonPanel.Controls.Add(resetSettingsButton);
-        settingsButtonPanel.Dock = DockStyle.Left;
-        settingsButtonPanel.Location = new Point(182, 642);
-        settingsButtonPanel.Margin = new Padding(6);
-        settingsButtonPanel.Name = "settingsButtonPanel";
-        settingsButtonPanel.Size = new Size(300, 62);
-        settingsButtonPanel.TabIndex = 12;
-        // 
-        // saveSettingsButton
-        // 
-        saveSettingsButton.AutoSize = true;
-        saveSettingsButton.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        saveSettingsButton.BackColor = Color.FromArgb(58, 134, 255);
-        saveSettingsButton.FlatAppearance.BorderSize = 0;
-        saveSettingsButton.FlatStyle = FlatStyle.Flat;
-        saveSettingsButton.ForeColor = Color.White;
-        saveSettingsButton.Location = new Point(6, 6);
-        saveSettingsButton.Margin = new Padding(6);
-        saveSettingsButton.Name = "saveSettingsButton";
-        saveSettingsButton.TabIndex = 0;
-        saveSettingsButton.Text = "OK";
-        saveSettingsButton.UseVisualStyleBackColor = false;
-        saveSettingsButton.Click += SaveSettingsButton_Click;
-        // 
-        // cancelSettingsButton
-        // 
-        cancelSettingsButton.AutoSize = true;
-        cancelSettingsButton.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        cancelSettingsButton.Location = new Point(155, 6);
-        cancelSettingsButton.Margin = new Padding(6);
-        cancelSettingsButton.Name = "cancelSettingsButton";
-        cancelSettingsButton.TabIndex = 2;
-        cancelSettingsButton.Text = "Cancel";
-        cancelSettingsButton.UseVisualStyleBackColor = true;
-        cancelSettingsButton.Click += CancelSettingsButton_Click;
-        // 
-        // resetSettingsButton
-        // 
-        resetSettingsButton.AutoSize = true;
-        resetSettingsButton.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        resetSettingsButton.Location = new Point(329, 6);
-        resetSettingsButton.Margin = new Padding(6);
-        resetSettingsButton.Name = "resetSettingsButton";
-        resetSettingsButton.TabIndex = 1;
-        resetSettingsButton.Text = "Reset";
-        resetSettingsButton.UseVisualStyleBackColor = true;
-        resetSettingsButton.Click += ResetSettingsButton_Click;
-        // 
-        // authLogLabel
-        // 
-        authLogLabel.AutoSize = true;
-        authLogLabel.Location = new Point(6, 628);
-        authLogLabel.Margin = new Padding(6, 0, 6, 0);
-        authLogLabel.Name = "authLogLabel";
-        authLogLabel.Size = new Size(147, 32);
-        authLogLabel.TabIndex = 16;
-        authLogLabel.Text = "Auth activity";
-        // 
-        // authLogTextBox
-        // 
-        authLogTextBox.BackColor = SystemColors.Window;
-        authLogTextBox.Dock = DockStyle.Top;
-        authLogTextBox.Location = new Point(182, 628);
-        authLogTextBox.Margin = new Padding(6, 6, 6, 12);
-        authLogTextBox.Multiline = true;
-        authLogTextBox.Name = "authLogTextBox";
-        authLogTextBox.ReadOnly = true;
-        authLogTextBox.ScrollBars = ScrollBars.Vertical;
-        authLogTextBox.Size = new Size(1429, 90);
-        authLogTextBox.TabIndex = 17;
-        // 
-        // credentialsHintLabel
-        // 
-        credentialsHintLabel.Location = new Point(0, 0);
-        credentialsHintLabel.Name = "credentialsHintLabel";
-        credentialsHintLabel.Size = new Size(100, 23);
-        credentialsHintLabel.TabIndex = 0;
-        // 
-        // MainForm
-        // 
-        AutoScaleDimensions = new SizeF(96F, 96F);
-        AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(700, 680);
-        Controls.Add(liveLayout);
-        Controls.Add(mainMenu);
-        Icon = new Icon(Path.Combine(AppContext.BaseDirectory, "sunsynk.ico"));
-        MainMenuStrip = mainMenu;
-        Margin = new Padding(6);
-        MinimumSize = new Size(700, 680);
-        Name = "MainForm";
-        StartPosition = FormStartPosition.CenterScreen;
-        Text = "SunSynk Tray";
-        trayMenu.ResumeLayout(false);
-        mainMenu.ResumeLayout(false);
-        mainMenu.PerformLayout();
-        liveLayout.ResumeLayout(false);
-        liveLayout.PerformLayout();
-        liveTopBarLayout.ResumeLayout(false);
-        liveTopBarLayout.PerformLayout();
-        liveActionsPanel.ResumeLayout(false);
-        settingsLayout.ResumeLayout(false);
-        settingsLayout.PerformLayout();
-        readinessPanel.ResumeLayout(false);
-        readinessPanel.PerformLayout();
-        ((System.ComponentModel.ISupportInitialize)pollIntervalNumeric).EndInit();
-        settingsButtonPanel.ResumeLayout(false);
-        settingsButtonPanel.PerformLayout();
-        ResumeLayout(false);
-        PerformLayout();
+            this.components = new System.ComponentModel.Container();
+            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(MainForm));
+            this.trayIcon = new System.Windows.Forms.NotifyIcon(this.components);
+            this.trayMenu = new System.Windows.Forms.ContextMenuStrip(this.components);
+            this.openMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.refreshMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.pauseResumeMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.traySeparator = new System.Windows.Forms.ToolStripSeparator();
+            this.exitMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.mainMenu = new System.Windows.Forms.MenuStrip();
+            this.fileMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.settingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.aboutMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.quitMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.liveLayout = new System.Windows.Forms.TableLayoutPanel();
+            this.liveTopBarLayout = new System.Windows.Forms.TableLayoutPanel();
+            this.statusSummaryControl = new SunSynkTrayWin.Controls.StatusSummaryControl();
+            this.flowView = new SunSynkTrayWin.Controls.PowerFlowViewControl();
+            this.dayChart = new SunSynkTrayWin.Controls.DayChartControl();
+            this.liveActionsPanel = new System.Windows.Forms.FlowLayoutPanel();
+            this.refreshNowButton = new System.Windows.Forms.Button();
+            this.pauseResumeButton = new System.Windows.Forms.Button();
+            this.settingsLayout = new System.Windows.Forms.TableLayoutPanel();
+            this.cloudGroupBox = new System.Windows.Forms.GroupBox();
+            this.cloudLayout = new System.Windows.Forms.TableLayoutPanel();
+            this.usernameLabel = new System.Windows.Forms.Label();
+            this.usernameTextBox = new System.Windows.Forms.TextBox();
+            this.passwordLabel = new System.Windows.Forms.Label();
+            this.passwordTextBox = new System.Windows.Forms.TextBox();
+            this.credentialsHintLabel = new System.Windows.Forms.Label();
+            this.testConnectionButton = new System.Windows.Forms.Button();
+            this.dataGroupBox = new System.Windows.Forms.GroupBox();
+            this.dataLayout = new System.Windows.Forms.TableLayoutPanel();
+            this.pollIntervalLabel = new System.Windows.Forms.Label();
+            this.pollIntervalNumeric = new System.Windows.Forms.NumericUpDown();
+            this.plantLabel = new System.Windows.Forms.Label();
+            this.plantListBox = new System.Windows.Forms.ListBox();
+            this.selectedPlantLabel = new System.Windows.Forms.Label();
+            this.appGroupBox = new System.Windows.Forms.GroupBox();
+            this.appLayout = new System.Windows.Forms.TableLayoutPanel();
+            this.startOnBootCheckBox = new System.Windows.Forms.CheckBox();
+            this.themeToggleCheckBox = new System.Windows.Forms.CheckBox();
+            this.logGroupBox = new System.Windows.Forms.GroupBox();
+            this.logLayout = new System.Windows.Forms.TableLayoutPanel();
+            this.authLogLabel = new System.Windows.Forms.Label();
+            this.authLogTextBox = new System.Windows.Forms.TextBox();
+            this.settingsButtonRow = new System.Windows.Forms.TableLayoutPanel();
+            this.settingsButtonPanel = new System.Windows.Forms.FlowLayoutPanel();
+            this.saveSettingsButton = new System.Windows.Forms.Button();
+            this.cancelSettingsButton = new System.Windows.Forms.Button();
+            this.resetSettingsButton = new System.Windows.Forms.Button();
+            this.trayMenu.SuspendLayout();
+            this.mainMenu.SuspendLayout();
+            this.liveLayout.SuspendLayout();
+            this.liveTopBarLayout.SuspendLayout();
+            this.liveActionsPanel.SuspendLayout();
+            this.settingsLayout.SuspendLayout();
+            this.cloudGroupBox.SuspendLayout();
+            this.cloudLayout.SuspendLayout();
+            this.dataGroupBox.SuspendLayout();
+            this.dataLayout.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.pollIntervalNumeric)).BeginInit();
+            this.appGroupBox.SuspendLayout();
+            this.appLayout.SuspendLayout();
+            this.logGroupBox.SuspendLayout();
+            this.logLayout.SuspendLayout();
+            this.settingsButtonRow.SuspendLayout();
+            this.settingsButtonPanel.SuspendLayout();
+            this.SuspendLayout();
+            // 
+            // trayIcon
+            // 
+            this.trayIcon.ContextMenuStrip = this.trayMenu;
+            this.trayIcon.Icon = ((System.Drawing.Icon)(resources.GetObject("trayIcon.Icon")));
+            this.trayIcon.Text = "SunSynk Tray";
+            this.trayIcon.Visible = true;
+            this.trayIcon.DoubleClick += new System.EventHandler(this.TrayIcon_DoubleClick);
+            this.trayIcon.MouseDoubleClick += new System.Windows.Forms.MouseEventHandler(this.trayIcon_MouseDoubleClick);
+            // 
+            // trayMenu
+            // 
+            this.trayMenu.ImageScalingSize = new System.Drawing.Size(32, 32);
+            this.trayMenu.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.openMenuItem,
+            this.refreshMenuItem,
+            this.pauseResumeMenuItem,
+            this.traySeparator,
+            this.exitMenuItem});
+            this.trayMenu.Name = "trayMenu";
+            this.trayMenu.Size = new System.Drawing.Size(231, 162);
+            this.trayMenu.Opening += new System.ComponentModel.CancelEventHandler(this.trayMenu_Opening);
+            // 
+            // openMenuItem
+            // 
+            this.openMenuItem.Name = "openMenuItem";
+            this.openMenuItem.Size = new System.Drawing.Size(230, 38);
+            this.openMenuItem.Text = "Open";
+            this.openMenuItem.Click += new System.EventHandler(this.OpenMenuItem_Click);
+            // 
+            // refreshMenuItem
+            // 
+            this.refreshMenuItem.Name = "refreshMenuItem";
+            this.refreshMenuItem.Size = new System.Drawing.Size(230, 38);
+            this.refreshMenuItem.Text = "Refresh now";
+            this.refreshMenuItem.Click += new System.EventHandler(this.RefreshMenuItem_Click);
+            // 
+            // pauseResumeMenuItem
+            // 
+            this.pauseResumeMenuItem.Name = "pauseResumeMenuItem";
+            this.pauseResumeMenuItem.Size = new System.Drawing.Size(230, 38);
+            this.pauseResumeMenuItem.Text = "Pause polling";
+            this.pauseResumeMenuItem.Click += new System.EventHandler(this.PauseResumeMenuItem_Click);
+            // 
+            // traySeparator
+            // 
+            this.traySeparator.Name = "traySeparator";
+            this.traySeparator.Size = new System.Drawing.Size(227, 6);
+            // 
+            // exitMenuItem
+            // 
+            this.exitMenuItem.Name = "exitMenuItem";
+            this.exitMenuItem.Size = new System.Drawing.Size(230, 38);
+            this.exitMenuItem.Text = "Quit";
+            this.exitMenuItem.Click += new System.EventHandler(this.ExitMenuItem_Click);
+            // 
+            // mainMenu
+            // 
+            this.mainMenu.GripMargin = new System.Windows.Forms.Padding(2, 2, 0, 2);
+            this.mainMenu.ImageScalingSize = new System.Drawing.Size(24, 24);
+            this.mainMenu.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.fileMenuItem});
+            this.mainMenu.Location = new System.Drawing.Point(0, 0);
+            this.mainMenu.Name = "mainMenu";
+            this.mainMenu.Padding = new System.Windows.Forms.Padding(20, 6, 0, 6);
+            this.mainMenu.Size = new System.Drawing.Size(1400, 48);
+            this.mainMenu.TabIndex = 1;
+            this.mainMenu.Text = "mainMenu";
+            // 
+            // fileMenuItem
+            // 
+            this.fileMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.settingsMenuItem,
+            this.aboutMenuItem,
+            this.quitMenuItem});
+            this.fileMenuItem.Name = "fileMenuItem";
+            this.fileMenuItem.Size = new System.Drawing.Size(71, 36);
+            this.fileMenuItem.Text = "File";
+            // 
+            // settingsMenuItem
+            // 
+            this.settingsMenuItem.Name = "settingsMenuItem";
+            this.settingsMenuItem.Size = new System.Drawing.Size(233, 44);
+            this.settingsMenuItem.Text = "Settings";
+            this.settingsMenuItem.Click += new System.EventHandler(this.SettingsMenuItem_Click);
+            // 
+            // aboutMenuItem
+            // 
+            this.aboutMenuItem.Name = "aboutMenuItem";
+            this.aboutMenuItem.Size = new System.Drawing.Size(233, 44);
+            this.aboutMenuItem.Text = "About";
+            this.aboutMenuItem.Click += new System.EventHandler(this.AboutMenuItem_Click);
+            // 
+            // quitMenuItem
+            // 
+            this.quitMenuItem.Name = "quitMenuItem";
+            this.quitMenuItem.Size = new System.Drawing.Size(233, 44);
+            this.quitMenuItem.Text = "Quit";
+            this.quitMenuItem.Click += new System.EventHandler(this.ExitMenuItem_Click);
+            // 
+            // liveLayout
+            // 
+            this.liveLayout.ColumnCount = 1;
+            this.liveLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.liveLayout.Controls.Add(this.liveTopBarLayout, 0, 0);
+            this.liveLayout.Controls.Add(this.flowView, 0, 1);
+            this.liveLayout.Controls.Add(this.dayChart, 0, 2);
+            this.liveLayout.Controls.Add(this.liveActionsPanel, 0, 3);
+            this.liveLayout.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.liveLayout.Location = new System.Drawing.Point(0, 48);
+            this.liveLayout.Margin = new System.Windows.Forms.Padding(0);
+            this.liveLayout.Name = "liveLayout";
+            this.liveLayout.RowCount = 4;
+            this.liveLayout.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.liveLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 40F));
+            this.liveLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 60F));
+            this.liveLayout.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.liveLayout.Size = new System.Drawing.Size(1400, 1226);
+            this.liveLayout.TabIndex = 0;
+            // 
+            // liveTopBarLayout
+            // 
+            this.liveTopBarLayout.AutoSize = true;
+            this.liveTopBarLayout.ColumnCount = 1;
+            this.liveTopBarLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.liveTopBarLayout.Controls.Add(this.statusSummaryControl, 0, 0);
+            this.liveTopBarLayout.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.liveTopBarLayout.Location = new System.Drawing.Point(0, 0);
+            this.liveTopBarLayout.Margin = new System.Windows.Forms.Padding(0);
+            this.liveTopBarLayout.Name = "liveTopBarLayout";
+            this.liveTopBarLayout.RowCount = 1;
+            this.liveTopBarLayout.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.liveTopBarLayout.Size = new System.Drawing.Size(1400, 176);
+            this.liveTopBarLayout.TabIndex = 7;
+            // 
+            // statusSummaryControl
+            // 
+            this.statusSummaryControl.AutoSize = true;
+            this.statusSummaryControl.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.statusSummaryControl.Location = new System.Drawing.Point(12, 12);
+            this.statusSummaryControl.Margin = new System.Windows.Forms.Padding(12, 12, 12, 12);
+            this.statusSummaryControl.Name = "statusSummaryControl";
+            this.statusSummaryControl.Size = new System.Drawing.Size(1376, 152);
+            this.statusSummaryControl.TabIndex = 8;
+            // 
+            // flowView
+            // 
+            this.flowView.BackColor = System.Drawing.SystemColors.Window;
+            this.flowView.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.flowView.Location = new System.Drawing.Point(0, 176);
+            this.flowView.Margin = new System.Windows.Forms.Padding(0);
+            this.flowView.MinimumSize = new System.Drawing.Size(0, 440);
+            this.flowView.Name = "flowView";
+            this.flowView.Padding = new System.Windows.Forms.Padding(48, 48, 48, 48);
+            this.flowView.Size = new System.Drawing.Size(1400, 440);
+            this.flowView.TabIndex = 7;
+            this.flowView.Load += new System.EventHandler(this.flowView_Load);
+            // 
+            // dayChart
+            // 
+            this.dayChart.BackColor = System.Drawing.SystemColors.Window;
+            this.dayChart.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.dayChart.Location = new System.Drawing.Point(0, 559);
+            this.dayChart.Margin = new System.Windows.Forms.Padding(0);
+            this.dayChart.MinimumSize = new System.Drawing.Size(0, 280);
+            this.dayChart.Name = "dayChart";
+            this.dayChart.Size = new System.Drawing.Size(1400, 575);
+            this.dayChart.TabIndex = 4;
+            // 
+            // liveActionsPanel
+            // 
+            this.liveActionsPanel.AutoSize = true;
+            this.liveActionsPanel.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
+            this.liveActionsPanel.Controls.Add(this.refreshNowButton);
+            this.liveActionsPanel.Controls.Add(this.pauseResumeButton);
+            this.liveActionsPanel.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.liveActionsPanel.Location = new System.Drawing.Point(0, 1134);
+            this.liveActionsPanel.Margin = new System.Windows.Forms.Padding(0);
+            this.liveActionsPanel.Name = "liveActionsPanel";
+            this.liveActionsPanel.Padding = new System.Windows.Forms.Padding(12, 12, 12, 20);
+            this.liveActionsPanel.Size = new System.Drawing.Size(1400, 92);
+            this.liveActionsPanel.TabIndex = 5;
+            // 
+            // refreshNowButton
+            // 
+            this.refreshNowButton.AutoSize = true;
+            this.refreshNowButton.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
+            this.refreshNowButton.Location = new System.Drawing.Point(24, 24);
+            this.refreshNowButton.Margin = new System.Windows.Forms.Padding(12, 12, 12, 12);
+            this.refreshNowButton.Name = "refreshNowButton";
+            this.refreshNowButton.Size = new System.Drawing.Size(142, 35);
+            this.refreshNowButton.TabIndex = 0;
+            this.refreshNowButton.Text = "Refresh now";
+            this.refreshNowButton.UseVisualStyleBackColor = true;
+            this.refreshNowButton.Click += new System.EventHandler(this.RefreshNowButton_Click);
+            // 
+            // pauseResumeButton
+            // 
+            this.pauseResumeButton.AutoSize = true;
+            this.pauseResumeButton.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
+            this.pauseResumeButton.Location = new System.Drawing.Point(190, 24);
+            this.pauseResumeButton.Margin = new System.Windows.Forms.Padding(12, 12, 12, 12);
+            this.pauseResumeButton.Name = "pauseResumeButton";
+            this.pauseResumeButton.Size = new System.Drawing.Size(152, 35);
+            this.pauseResumeButton.TabIndex = 1;
+            this.pauseResumeButton.Text = "Pause polling";
+            this.pauseResumeButton.UseVisualStyleBackColor = true;
+            this.pauseResumeButton.Click += new System.EventHandler(this.PauseResumeButton_Click);
+            // 
+            // settingsLayout
+            // 
+            this.settingsLayout.AutoSize = true;
+            this.settingsLayout.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
+            this.settingsLayout.ColumnCount = 1;
+            this.settingsLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.settingsLayout.Controls.Add(this.cloudGroupBox, 0, 0);
+            this.settingsLayout.Controls.Add(this.dataGroupBox, 0, 1);
+            this.settingsLayout.Controls.Add(this.appGroupBox, 0, 2);
+            this.settingsLayout.Controls.Add(this.logGroupBox, 0, 3);
+            this.settingsLayout.Controls.Add(this.settingsButtonRow, 0, 4);
+            this.settingsLayout.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.settingsLayout.Location = new System.Drawing.Point(10, 10);
+            this.settingsLayout.Margin = new System.Windows.Forms.Padding(4);
+            this.settingsLayout.Name = "settingsLayout";
+            this.settingsLayout.RowCount = 6;
+            this.settingsLayout.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.settingsLayout.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.settingsLayout.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.settingsLayout.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.settingsLayout.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.settingsLayout.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.settingsLayout.Size = new System.Drawing.Size(1617, 1397);
+            this.settingsLayout.TabIndex = 0;
+            // 
+            // cloudGroupBox
+            // 
+            this.cloudGroupBox.AutoSize = true;
+            this.cloudGroupBox.Controls.Add(this.cloudLayout);
+            this.cloudGroupBox.Dock = System.Windows.Forms.DockStyle.Top;
+            this.cloudGroupBox.Location = new System.Drawing.Point(6, 6);
+            this.cloudGroupBox.Margin = new System.Windows.Forms.Padding(6);
+            this.cloudGroupBox.Name = "cloudGroupBox";
+            this.cloudGroupBox.Padding = new System.Windows.Forms.Padding(12, 14, 12, 14);
+            this.cloudGroupBox.Size = new System.Drawing.Size(1605, 224);
+            this.cloudGroupBox.TabIndex = 1;
+            this.cloudGroupBox.TabStop = false;
+            this.cloudGroupBox.Text = "SunSynk cloud access";
+            // 
+            // cloudLayout
+            // 
+            this.cloudLayout.AutoSize = true;
+            this.cloudLayout.ColumnCount = 2;
+            this.cloudLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 35F));
+            this.cloudLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 65F));
+            this.cloudLayout.Controls.Add(this.usernameLabel, 0, 0);
+            this.cloudLayout.Controls.Add(this.usernameTextBox, 1, 0);
+            this.cloudLayout.Controls.Add(this.passwordLabel, 0, 1);
+            this.cloudLayout.Controls.Add(this.passwordTextBox, 1, 1);
+            this.cloudLayout.Controls.Add(this.credentialsHintLabel, 0, 2);
+            this.cloudLayout.Controls.Add(this.testConnectionButton, 1, 3);
+            this.cloudLayout.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.cloudLayout.Location = new System.Drawing.Point(12, 38);
+            this.cloudLayout.Margin = new System.Windows.Forms.Padding(4);
+            this.cloudLayout.Name = "cloudLayout";
+            this.cloudLayout.RowCount = 4;
+            this.cloudLayout.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.cloudLayout.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.cloudLayout.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.cloudLayout.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.cloudLayout.Size = new System.Drawing.Size(1581, 172);
+            this.cloudLayout.TabIndex = 0;
+            // 
+            // usernameLabel
+            // 
+            this.usernameLabel.AutoSize = true;
+            this.usernameLabel.Location = new System.Drawing.Point(6, 0);
+            this.usernameLabel.Margin = new System.Windows.Forms.Padding(6, 0, 6, 0);
+            this.usernameLabel.Name = "usernameLabel";
+            this.usernameLabel.Size = new System.Drawing.Size(110, 25);
+            this.usernameLabel.TabIndex = 1;
+            this.usernameLabel.Text = "Username";
+            // 
+            // usernameTextBox
+            // 
+            this.usernameTextBox.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.usernameTextBox.Location = new System.Drawing.Point(559, 6);
+            this.usernameTextBox.Margin = new System.Windows.Forms.Padding(6);
+            this.usernameTextBox.Name = "usernameTextBox";
+            this.usernameTextBox.Size = new System.Drawing.Size(1016, 31);
+            this.usernameTextBox.TabIndex = 2;
+            // 
+            // passwordLabel
+            // 
+            this.passwordLabel.AutoSize = true;
+            this.passwordLabel.Location = new System.Drawing.Point(6, 55);
+            this.passwordLabel.Margin = new System.Windows.Forms.Padding(6, 12, 6, 0);
+            this.passwordLabel.Name = "passwordLabel";
+            this.passwordLabel.Size = new System.Drawing.Size(106, 25);
+            this.passwordLabel.TabIndex = 3;
+            this.passwordLabel.Text = "Password";
+            // 
+            // passwordTextBox
+            // 
+            this.passwordTextBox.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.passwordTextBox.Location = new System.Drawing.Point(559, 49);
+            this.passwordTextBox.Margin = new System.Windows.Forms.Padding(6);
+            this.passwordTextBox.Name = "passwordTextBox";
+            this.passwordTextBox.Size = new System.Drawing.Size(1016, 31);
+            this.passwordTextBox.TabIndex = 4;
+            this.passwordTextBox.UseSystemPasswordChar = true;
+            // 
+            // credentialsHintLabel
+            // 
+            this.credentialsHintLabel.AutoSize = true;
+            this.credentialsHintLabel.ForeColor = System.Drawing.SystemColors.GrayText;
+            this.credentialsHintLabel.Location = new System.Drawing.Point(6, 94);
+            this.credentialsHintLabel.Margin = new System.Windows.Forms.Padding(6, 8, 6, 0);
+            this.credentialsHintLabel.MaximumSize = new System.Drawing.Size(700, 0);
+            this.credentialsHintLabel.Name = "credentialsHintLabel";
+            this.credentialsHintLabel.Size = new System.Drawing.Size(338, 25);
+            this.credentialsHintLabel.TabIndex = 19;
+            this.credentialsHintLabel.Text = "Use your SunSynk portal account.";
+            // 
+            // testConnectionButton
+            // 
+            this.testConnectionButton.Anchor = System.Windows.Forms.AnchorStyles.Left;
+            this.testConnectionButton.AutoSize = true;
+            this.testConnectionButton.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
+            this.testConnectionButton.Location = new System.Drawing.Point(559, 131);
+            this.testConnectionButton.Margin = new System.Windows.Forms.Padding(6, 12, 6, 6);
+            this.testConnectionButton.Name = "testConnectionButton";
+            this.testConnectionButton.Size = new System.Drawing.Size(120, 35);
+            this.testConnectionButton.TabIndex = 5;
+            this.testConnectionButton.Text = "Get plants";
+            this.testConnectionButton.UseVisualStyleBackColor = true;
+            // 
+            // dataGroupBox
+            // 
+            this.dataGroupBox.AutoSize = true;
+            this.dataGroupBox.Controls.Add(this.dataLayout);
+            this.dataGroupBox.Dock = System.Windows.Forms.DockStyle.Top;
+            this.dataGroupBox.Location = new System.Drawing.Point(6, 242);
+            this.dataGroupBox.Margin = new System.Windows.Forms.Padding(6);
+            this.dataGroupBox.Name = "dataGroupBox";
+            this.dataGroupBox.Padding = new System.Windows.Forms.Padding(12, 14, 12, 14);
+            this.dataGroupBox.Size = new System.Drawing.Size(1605, 350);
+            this.dataGroupBox.TabIndex = 2;
+            this.dataGroupBox.TabStop = false;
+            this.dataGroupBox.Text = "Sync and sites";
+            // 
+            // dataLayout
+            // 
+            this.dataLayout.AutoSize = true;
+            this.dataLayout.ColumnCount = 2;
+            this.dataLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 35F));
+            this.dataLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 65F));
+            this.dataLayout.Controls.Add(this.pollIntervalLabel, 0, 0);
+            this.dataLayout.Controls.Add(this.pollIntervalNumeric, 1, 0);
+            this.dataLayout.Controls.Add(this.plantLabel, 0, 1);
+            this.dataLayout.Controls.Add(this.plantListBox, 1, 1);
+            this.dataLayout.Controls.Add(this.selectedPlantLabel, 1, 2);
+            this.dataLayout.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.dataLayout.Location = new System.Drawing.Point(12, 38);
+            this.dataLayout.Margin = new System.Windows.Forms.Padding(4);
+            this.dataLayout.Name = "dataLayout";
+            this.dataLayout.RowCount = 3;
+            this.dataLayout.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.dataLayout.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.dataLayout.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.dataLayout.Size = new System.Drawing.Size(1581, 298);
+            this.dataLayout.TabIndex = 0;
+            // 
+            // pollIntervalLabel
+            // 
+            this.pollIntervalLabel.AutoSize = true;
+            this.pollIntervalLabel.Location = new System.Drawing.Point(6, 0);
+            this.pollIntervalLabel.Margin = new System.Windows.Forms.Padding(6, 0, 6, 0);
+            this.pollIntervalLabel.Name = "pollIntervalLabel";
+            this.pollIntervalLabel.Size = new System.Drawing.Size(124, 25);
+            this.pollIntervalLabel.TabIndex = 6;
+            this.pollIntervalLabel.Text = "Poll interval";
+            // 
+            // pollIntervalNumeric
+            // 
+            this.pollIntervalNumeric.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Left | System.Windows.Forms.AnchorStyles.Right)));
+            this.pollIntervalNumeric.Location = new System.Drawing.Point(559, 0);
+            this.pollIntervalNumeric.Margin = new System.Windows.Forms.Padding(6, 0, 6, 0);
+            this.pollIntervalNumeric.Maximum = new decimal(new int[] {
+            900,
+            0,
+            0,
+            0});
+            this.pollIntervalNumeric.Minimum = new decimal(new int[] {
+            30,
+            0,
+            0,
+            0});
+            this.pollIntervalNumeric.Name = "pollIntervalNumeric";
+            this.pollIntervalNumeric.Size = new System.Drawing.Size(1016, 31);
+            this.pollIntervalNumeric.TabIndex = 7;
+            this.pollIntervalNumeric.Value = new decimal(new int[] {
+            60,
+            0,
+            0,
+            0});
+            // 
+            // plantLabel
+            // 
+            this.plantLabel.AutoSize = true;
+            this.plantLabel.Location = new System.Drawing.Point(6, 31);
+            this.plantLabel.Margin = new System.Windows.Forms.Padding(6, 0, 6, 0);
+            this.plantLabel.Name = "plantLabel";
+            this.plantLabel.Size = new System.Drawing.Size(151, 25);
+            this.plantLabel.TabIndex = 9;
+            this.plantLabel.Text = "Available sites";
+            // 
+            // plantListBox
+            // 
+            this.plantListBox.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.plantListBox.FormattingEnabled = true;
+            this.plantListBox.IntegralHeight = false;
+            this.plantListBox.ItemHeight = 25;
+            this.plantListBox.Location = new System.Drawing.Point(559, 37);
+            this.plantListBox.Margin = new System.Windows.Forms.Padding(6);
+            this.plantListBox.Name = "plantListBox";
+            this.plantListBox.Size = new System.Drawing.Size(1016, 230);
+            this.plantListBox.TabIndex = 10;
+            // 
+            // selectedPlantLabel
+            // 
+            this.selectedPlantLabel.AutoSize = true;
+            this.selectedPlantLabel.Location = new System.Drawing.Point(559, 273);
+            this.selectedPlantLabel.Margin = new System.Windows.Forms.Padding(6, 0, 6, 0);
+            this.selectedPlantLabel.Name = "selectedPlantLabel";
+            this.selectedPlantLabel.Size = new System.Drawing.Size(223, 25);
+            this.selectedPlantLabel.TabIndex = 11;
+            this.selectedPlantLabel.Text = "Selected plant: (none)";
+            // 
+            // appGroupBox
+            // 
+            this.appGroupBox.AutoSize = true;
+            this.appGroupBox.Controls.Add(this.appLayout);
+            this.appGroupBox.Dock = System.Windows.Forms.DockStyle.Top;
+            this.appGroupBox.Location = new System.Drawing.Point(6, 604);
+            this.appGroupBox.Margin = new System.Windows.Forms.Padding(6);
+            this.appGroupBox.Name = "appGroupBox";
+            this.appGroupBox.Padding = new System.Windows.Forms.Padding(12, 14, 12, 14);
+            this.appGroupBox.Size = new System.Drawing.Size(1605, 134);
+            this.appGroupBox.TabIndex = 3;
+            this.appGroupBox.TabStop = false;
+            this.appGroupBox.Text = "App and OS";
+            // 
+            // appLayout
+            // 
+            this.appLayout.AutoSize = true;
+            this.appLayout.ColumnCount = 1;
+            this.appLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.appLayout.Controls.Add(this.startOnBootCheckBox, 0, 0);
+            this.appLayout.Controls.Add(this.themeToggleCheckBox, 0, 1);
+            this.appLayout.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.appLayout.Location = new System.Drawing.Point(12, 38);
+            this.appLayout.Margin = new System.Windows.Forms.Padding(4);
+            this.appLayout.Name = "appLayout";
+            this.appLayout.RowCount = 2;
+            this.appLayout.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.appLayout.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.appLayout.Size = new System.Drawing.Size(1581, 82);
+            this.appLayout.TabIndex = 0;
+            // 
+            // startOnBootCheckBox
+            // 
+            this.startOnBootCheckBox.AutoSize = true;
+            this.startOnBootCheckBox.Location = new System.Drawing.Point(6, 6);
+            this.startOnBootCheckBox.Margin = new System.Windows.Forms.Padding(6);
+            this.startOnBootCheckBox.Name = "startOnBootCheckBox";
+            this.startOnBootCheckBox.Size = new System.Drawing.Size(319, 29);
+            this.startOnBootCheckBox.TabIndex = 8;
+            this.startOnBootCheckBox.Text = "Start when Windows signs in";
+            this.startOnBootCheckBox.UseVisualStyleBackColor = true;
+            // 
+            // themeToggleCheckBox
+            // 
+            this.themeToggleCheckBox.AutoSize = true;
+            this.themeToggleCheckBox.Location = new System.Drawing.Point(6, 47);
+            this.themeToggleCheckBox.Margin = new System.Windows.Forms.Padding(6);
+            this.themeToggleCheckBox.Name = "themeToggleCheckBox";
+            this.themeToggleCheckBox.Size = new System.Drawing.Size(189, 29);
+            this.themeToggleCheckBox.TabIndex = 18;
+            this.themeToggleCheckBox.Text = "Use dark mode";
+            this.themeToggleCheckBox.UseVisualStyleBackColor = true;
+            // 
+            // logGroupBox
+            // 
+            this.logGroupBox.AutoSize = true;
+            this.logGroupBox.Controls.Add(this.logLayout);
+            this.logGroupBox.Dock = System.Windows.Forms.DockStyle.Top;
+            this.logGroupBox.Location = new System.Drawing.Point(6, 750);
+            this.logGroupBox.Margin = new System.Windows.Forms.Padding(6);
+            this.logGroupBox.Name = "logGroupBox";
+            this.logGroupBox.Padding = new System.Windows.Forms.Padding(12, 14, 12, 14);
+            this.logGroupBox.Size = new System.Drawing.Size(1605, 137);
+            this.logGroupBox.TabIndex = 4;
+            this.logGroupBox.TabStop = false;
+            this.logGroupBox.Text = "Authentication activity";
+            // 
+            // logLayout
+            // 
+            this.logLayout.AutoSize = true;
+            this.logLayout.ColumnCount = 1;
+            this.logLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.logLayout.Controls.Add(this.authLogLabel, 0, 0);
+            this.logLayout.Controls.Add(this.authLogTextBox, 0, 1);
+            this.logLayout.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.logLayout.Location = new System.Drawing.Point(12, 38);
+            this.logLayout.Margin = new System.Windows.Forms.Padding(4);
+            this.logLayout.Name = "logLayout";
+            this.logLayout.RowCount = 2;
+            this.logLayout.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.logLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.logLayout.Size = new System.Drawing.Size(1581, 85);
+            this.logLayout.TabIndex = 0;
+            // 
+            // authLogLabel
+            // 
+            this.authLogLabel.AutoSize = true;
+            this.authLogLabel.Location = new System.Drawing.Point(6, 0);
+            this.authLogLabel.Margin = new System.Windows.Forms.Padding(6, 0, 6, 0);
+            this.authLogLabel.Name = "authLogLabel";
+            this.authLogLabel.Size = new System.Drawing.Size(129, 25);
+            this.authLogLabel.TabIndex = 16;
+            this.authLogLabel.Text = "Auth activity";
+            // 
+            // authLogTextBox
+            // 
+            this.authLogTextBox.BackColor = System.Drawing.SystemColors.Window;
+            this.authLogTextBox.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.authLogTextBox.Location = new System.Drawing.Point(6, 31);
+            this.authLogTextBox.Margin = new System.Windows.Forms.Padding(6);
+            this.authLogTextBox.Multiline = true;
+            this.authLogTextBox.Name = "authLogTextBox";
+            this.authLogTextBox.ReadOnly = true;
+            this.authLogTextBox.ScrollBars = System.Windows.Forms.ScrollBars.Vertical;
+            this.authLogTextBox.Size = new System.Drawing.Size(1569, 48);
+            this.authLogTextBox.TabIndex = 17;
+            // 
+            // settingsButtonRow
+            // 
+            this.settingsButtonRow.AutoSize = true;
+            this.settingsButtonRow.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
+            this.settingsButtonRow.ColumnCount = 2;
+            this.settingsButtonRow.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.settingsButtonRow.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle());
+            this.settingsButtonRow.Controls.Add(this.settingsButtonPanel, 1, 0);
+            this.settingsButtonRow.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.settingsButtonRow.Location = new System.Drawing.Point(6, 905);
+            this.settingsButtonRow.Margin = new System.Windows.Forms.Padding(6, 12, 6, 6);
+            this.settingsButtonRow.Name = "settingsButtonRow";
+            this.settingsButtonRow.RowCount = 1;
+            this.settingsButtonRow.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.settingsButtonRow.Size = new System.Drawing.Size(1605, 53);
+            this.settingsButtonRow.TabIndex = 19;
+            // 
+            // settingsButtonPanel
+            // 
+            this.settingsButtonPanel.AutoSize = true;
+            this.settingsButtonPanel.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
+            this.settingsButtonPanel.Controls.Add(this.saveSettingsButton);
+            this.settingsButtonPanel.Controls.Add(this.cancelSettingsButton);
+            this.settingsButtonPanel.Controls.Add(this.resetSettingsButton);
+            this.settingsButtonPanel.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.settingsButtonPanel.Location = new System.Drawing.Point(1350, 0);
+            this.settingsButtonPanel.Margin = new System.Windows.Forms.Padding(0);
+            this.settingsButtonPanel.Name = "settingsButtonPanel";
+            this.settingsButtonPanel.Padding = new System.Windows.Forms.Padding(0, 6, 0, 0);
+            this.settingsButtonPanel.Size = new System.Drawing.Size(255, 53);
+            this.settingsButtonPanel.TabIndex = 12;
+            this.settingsButtonPanel.WrapContents = false;
+            // 
+            // saveSettingsButton
+            // 
+            this.saveSettingsButton.AutoSize = true;
+            this.saveSettingsButton.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
+            this.saveSettingsButton.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(58)))), ((int)(((byte)(134)))), ((int)(((byte)(255)))));
+            this.saveSettingsButton.FlatAppearance.BorderSize = 0;
+            this.saveSettingsButton.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.saveSettingsButton.ForeColor = System.Drawing.Color.White;
+            this.saveSettingsButton.Location = new System.Drawing.Point(6, 12);
+            this.saveSettingsButton.Margin = new System.Windows.Forms.Padding(6);
+            this.saveSettingsButton.Name = "saveSettingsButton";
+            this.saveSettingsButton.Size = new System.Drawing.Size(52, 35);
+            this.saveSettingsButton.TabIndex = 0;
+            this.saveSettingsButton.Text = "OK";
+            this.saveSettingsButton.UseVisualStyleBackColor = false;
+            // 
+            // cancelSettingsButton
+            // 
+            this.cancelSettingsButton.AutoSize = true;
+            this.cancelSettingsButton.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
+            this.cancelSettingsButton.Location = new System.Drawing.Point(70, 12);
+            this.cancelSettingsButton.Margin = new System.Windows.Forms.Padding(6);
+            this.cancelSettingsButton.Name = "cancelSettingsButton";
+            this.cancelSettingsButton.Size = new System.Drawing.Size(89, 35);
+            this.cancelSettingsButton.TabIndex = 2;
+            this.cancelSettingsButton.Text = "Cancel";
+            this.cancelSettingsButton.UseVisualStyleBackColor = true;
+            // 
+            // resetSettingsButton
+            // 
+            this.resetSettingsButton.AutoSize = true;
+            this.resetSettingsButton.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
+            this.resetSettingsButton.Location = new System.Drawing.Point(171, 12);
+            this.resetSettingsButton.Margin = new System.Windows.Forms.Padding(6);
+            this.resetSettingsButton.Name = "resetSettingsButton";
+            this.resetSettingsButton.Size = new System.Drawing.Size(78, 35);
+            this.resetSettingsButton.TabIndex = 1;
+            this.resetSettingsButton.Text = "Reset";
+            this.resetSettingsButton.UseVisualStyleBackColor = true;
+            // 
+            // MainForm
+            // 
+            this.AutoScaleDimensions = new System.Drawing.SizeF(192F, 192F);
+            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
+            this.ClientSize = new System.Drawing.Size(1400, 1274);
+            this.Controls.Add(this.liveLayout);
+            this.Controls.Add(this.mainMenu);
+            this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
+            this.MainMenuStrip = this.mainMenu;
+            this.Margin = new System.Windows.Forms.Padding(12, 12, 12, 12);
+            this.MinimumSize = new System.Drawing.Size(1406, 1281);
+            this.Name = "MainForm";
+            this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
+            this.Text = "SunSynk Tray";
+            this.trayMenu.ResumeLayout(false);
+            this.mainMenu.ResumeLayout(false);
+            this.mainMenu.PerformLayout();
+            this.liveLayout.ResumeLayout(false);
+            this.liveLayout.PerformLayout();
+            this.liveTopBarLayout.ResumeLayout(false);
+            this.liveTopBarLayout.PerformLayout();
+            this.liveActionsPanel.ResumeLayout(false);
+            this.liveActionsPanel.PerformLayout();
+            this.settingsLayout.ResumeLayout(false);
+            this.settingsLayout.PerformLayout();
+            this.cloudGroupBox.ResumeLayout(false);
+            this.cloudGroupBox.PerformLayout();
+            this.cloudLayout.ResumeLayout(false);
+            this.cloudLayout.PerformLayout();
+            this.dataGroupBox.ResumeLayout(false);
+            this.dataGroupBox.PerformLayout();
+            this.dataLayout.ResumeLayout(false);
+            this.dataLayout.PerformLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.pollIntervalNumeric)).EndInit();
+            this.appGroupBox.ResumeLayout(false);
+            this.appGroupBox.PerformLayout();
+            this.appLayout.ResumeLayout(false);
+            this.appLayout.PerformLayout();
+            this.logGroupBox.ResumeLayout(false);
+            this.logGroupBox.PerformLayout();
+            this.logLayout.ResumeLayout(false);
+            this.logLayout.PerformLayout();
+            this.settingsButtonRow.ResumeLayout(false);
+            this.settingsButtonRow.PerformLayout();
+            this.settingsButtonPanel.ResumeLayout(false);
+            this.settingsButtonPanel.PerformLayout();
+            this.ResumeLayout(false);
+            this.PerformLayout();
+
     }
 
     #endregion
@@ -624,6 +791,7 @@ partial class MainForm
     private Button refreshNowButton;
     private Button pauseResumeButton;
     private TableLayoutPanel settingsLayout;
+    private TableLayoutPanel settingsButtonRow;
     private Label usernameLabel;
     private TextBox usernameTextBox;
     private Label passwordLabel;
@@ -634,16 +802,21 @@ partial class MainForm
     private Label plantLabel;
     private ListBox plantListBox;
     private Label selectedPlantLabel;
-    private FlowLayoutPanel readinessPanel;
-    private Panel readinessDot;
-    private Label readinessStatusLabel;
     private FlowLayoutPanel settingsButtonPanel;
     private Button testConnectionButton;
     private Button saveSettingsButton;
     private Button resetSettingsButton;
     private Button cancelSettingsButton;
-    private Label credentialsHintLabel;
     private Label authLogLabel;
     private TextBox authLogTextBox;
     private CheckBox themeToggleCheckBox;
+    private GroupBox cloudGroupBox;
+    private TableLayoutPanel cloudLayout;
+    private Label credentialsHintLabel;
+    private GroupBox dataGroupBox;
+    private TableLayoutPanel dataLayout;
+    private GroupBox appGroupBox;
+    private TableLayoutPanel appLayout;
+    private GroupBox logGroupBox;
+    private TableLayoutPanel logLayout;
 }

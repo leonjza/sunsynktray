@@ -41,7 +41,7 @@ public partial class MainForm
         }
 
         ToggleSettingsUi(enabled: false);
-        authLogTextBox.Clear();
+        SettingsForm.authLogTextBox.Clear();
         AppendAuthLog("Starting login...");
 
         TokenData? token = null;
@@ -86,12 +86,12 @@ public partial class MainForm
 
     private void ToggleSettingsUi(bool enabled)
     {
-        testConnectionButton.Enabled = enabled;
-        saveSettingsButton.Enabled = enabled;
-        usernameTextBox.Enabled = enabled;
-        passwordTextBox.Enabled = enabled;
-        pollIntervalNumeric.Enabled = enabled;
-        startOnBootCheckBox.Enabled = enabled;
+        SettingsForm.testConnectionButton.Enabled = enabled;
+        SettingsForm.saveSettingsButton.Enabled = enabled;
+        SettingsForm.usernameTextBox.Enabled = enabled;
+        SettingsForm.passwordTextBox.Enabled = enabled;
+        SettingsForm.pollIntervalNumeric.Enabled = enabled;
+        SettingsForm.startOnBootCheckBox.Enabled = enabled;
     }
 
     private void AppendAuthLog(string message)
@@ -99,7 +99,7 @@ public partial class MainForm
         this.InvokeIfRequired(() =>
         {
             var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
-            authLogTextBox.AppendText(line + Environment.NewLine);
+            SettingsForm.authLogTextBox.AppendText(line + Environment.NewLine);
         });
     }
 
@@ -179,11 +179,11 @@ public partial class MainForm
         _isPopulatingPlants = true;
         try
         {
-            plantListBox.DataSource = null;
-            plantListBox.DisplayMember = nameof(PlantInfo.Name);
-            plantListBox.ValueMember = nameof(PlantInfo.Id);
-            plantListBox.DataSource = plantsPage.Infos;
-            plantListBox.ClearSelected();
+            SettingsForm.plantListBox.DataSource = null;
+            SettingsForm.plantListBox.DisplayMember = nameof(PlantInfo.Name);
+            SettingsForm.plantListBox.ValueMember = nameof(PlantInfo.Id);
+            SettingsForm.plantListBox.DataSource = plantsPage.Infos;
+            SettingsForm.plantListBox.ClearSelected();
             _appState.SetPlantSelection(_appState.PlantSelection.Id, _appState.PlantSelection.Name, available: false);
 
             if (_appState.PlantSelection.Id.HasValue)
@@ -192,7 +192,7 @@ public partial class MainForm
                 {
                     if (item.Id == _appState.PlantSelection.Id.Value)
                     {
-                        plantListBox.SelectedItem = item;
+                        SettingsForm.plantListBox.SelectedItem = item;
                         SetSelectedPlant(item.Id, item.Name, available: true);
                         break;
                     }
@@ -217,7 +217,7 @@ public partial class MainForm
             return;
         }
 
-        var selectedPlant = plantListBox.SelectedItem as PlantInfo;
+        var selectedPlant = SettingsForm.plantListBox.SelectedItem as PlantInfo;
         if (selectedPlant != null)
         {
             SetSelectedPlant(selectedPlant.Id, selectedPlant.Name, available: true);
@@ -262,58 +262,25 @@ public partial class MainForm
     {
         _appState.RefreshReadiness();
         var plantControlsVisible = _appState.IsAuthenticated;
-        plantLabel.Visible = plantControlsVisible;
-        plantListBox.Visible = plantControlsVisible;
-        selectedPlantLabel.Text = _appState.PlantSelection.DisplayLabel;
-        selectedPlantLabel.Visible = plantControlsVisible && _appState.PlantSelection.Id.HasValue;
+        SettingsForm.plantLabel.Visible = plantControlsVisible;
+        SettingsForm.plantListBox.Visible = plantControlsVisible;
+        SettingsForm.selectedPlantLabel.Text = _appState.PlantSelection.DisplayLabel;
+        SettingsForm.selectedPlantLabel.Visible = plantControlsVisible && _appState.PlantSelection.Id.HasValue;
     }
 
     private void EnsureSettingsWindow()
     {
-        if (_settingsForm != null)
+        if (_settingsForm == null)
         {
-            return;
+            _settingsForm = new SettingsForm();
+            _settingsForm.WireEvents(
+                SaveSettingsButton_Click,
+                CancelSettingsButton_Click,
+                ResetSettingsButton_Click,
+                TestConnectionButton_Click,
+                SettingsForm_FormClosing);
+            BindSettingsToState();
         }
-
-        _settingsForm = new Form
-        {
-            Text = "Settings",
-            StartPosition = FormStartPosition.CenterParent,
-            ClientSize = new Size(780, 650),
-            MinimumSize = new Size(740, 600)
-        };
-        _settingsForm.FormClosing += SettingsForm_FormClosing;
-
-        settingsLayout.Parent?.Controls.Remove(settingsLayout);
-        settingsLayout.Dock = DockStyle.Fill;
-        settingsLayout.Padding = new Padding(10);
-        _settingsForm.Controls.Add(settingsLayout);
-
-        // Scale settings window and key rows for current DPI so HiDPI isn't cramped and LoDPI isn't oversized.
-        var scale = Math.Max(1f, _settingsForm.DeviceDpi / 96f);
-        var effectiveScale = Math.Min(scale, 1.75f);
-        _settingsForm.ClientSize = new Size(
-            (int)Math.Round(640 * effectiveScale),
-            (int)Math.Round(600 * effectiveScale));
-        _settingsForm.MinimumSize = new Size(
-            (int)Math.Round(620 * effectiveScale),
-            (int)Math.Round(560 * effectiveScale));
-        settingsLayout.Padding = new Padding((int)Math.Round(8 * effectiveScale));
-
-        if (settingsLayout.RowStyles.Count > 10)
-        {
-            var plantHeight = (int)Math.Round(32f * 8f * effectiveScale);
-            settingsLayout.RowStyles[7].Height = plantHeight;
-            settingsLayout.RowStyles[7].SizeType = SizeType.Absolute;
-
-            var lineHeight = authLogTextBox.Font?.GetHeight() ?? 16f;
-            var logHeight = (int)Math.Round(lineHeight * 6.0f * effectiveScale);
-            settingsLayout.RowStyles[10].Height = logHeight;
-            settingsLayout.RowStyles[10].SizeType = SizeType.Absolute;
-            authLogTextBox.Height = logHeight;
-        }
-
-        plantListBox.ItemHeight = (int)Math.Round(32 * effectiveScale);
         ApplyTheme(_currentTheme);
     }
 
@@ -361,7 +328,7 @@ public partial class MainForm
     private void SetSelectedPlant(int? plantId, string? plantName, bool available, bool showMissingMessage = false)
     {
         _appState.SetPlantSelection(plantId, plantName, available);
-        selectedPlantLabel.Text = _appState.PlantSelection.DisplayLabel;
-        selectedPlantLabel.Visible = _appState.PlantSelection.IsAvailable || showMissingMessage;
+        SettingsForm.selectedPlantLabel.Text = _appState.PlantSelection.DisplayLabel;
+        SettingsForm.selectedPlantLabel.Visible = _appState.PlantSelection.IsAvailable || showMissingMessage;
     }
 }

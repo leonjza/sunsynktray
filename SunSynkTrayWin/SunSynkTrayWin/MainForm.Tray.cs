@@ -130,8 +130,10 @@ public partial class MainForm
         //g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
         g.Clear(Color.Transparent);
 
+        var dpiScale = g.DpiX / 96f;
+        var fontSize = dpiScale > 1f ? 14f / dpiScale : 14f;
         var text = $"{soc:0}";
-        using var font = new Font("Arial Narrow", 14, FontStyle.Regular);
+        using var font = new Font("Arial Narrow", fontSize, FontStyle.Regular);
         var textSize = g.MeasureString(text, font);
         var textPoint = new PointF(
             (size - textSize.Width) / 2f,

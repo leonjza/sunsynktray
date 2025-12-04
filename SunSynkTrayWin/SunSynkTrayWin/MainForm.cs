@@ -21,13 +21,14 @@ public partial class MainForm : Form
     private PowerFlowData? _lastFlow;
     private readonly StatusViewModel _statusViewModel = new();
     private readonly AppState _appState;
-    private Form? _settingsForm;
+    private SettingsForm? _settingsForm;
     private readonly ThemeManager _themeManager;
     private readonly Icon? _darkTrayIcon;
     private readonly Icon? _lightTrayIcon;
     private AppTheme _currentTheme = AppTheme.Dark;
     private readonly MonitoringController _monitoring;
     private Icon? _dynamicTrayIcon;
+    private SettingsForm SettingsForm => _settingsForm ?? throw new InvalidOperationException("Settings form not initialized");
 
     public MainForm()
     {
@@ -36,6 +37,15 @@ public partial class MainForm : Form
         _apiClient = SunSynkClient.Instance;
         _settingsStore = new SecureSettingsStore();
         _appState = new AppState(_statusViewModel, _apiClient);
+        _settingsForm = new SettingsForm();
+        _settingsForm.WireEvents(
+            SaveSettingsButton_Click,
+            CancelSettingsButton_Click,
+            ResetSettingsButton_Click,
+            TestConnectionButton_Click,
+            SettingsForm_FormClosing);
+        _settingsForm.plantListBox.SelectedIndexChanged += PlantListBox_SelectedIndexChanged;
+        _settingsForm.plantListBox.Format += PlantListBox_Format;
         BindSettingsToState();
         Load += MainForm_Load;
         FormClosing += MainForm_FormClosing;
@@ -75,4 +85,18 @@ public partial class MainForm : Form
         };
     }
 
+    private void trayMenu_Opening(object sender, System.ComponentModel.CancelEventArgs e)
+    {
+
+    }
+
+    private void flowView_Load(object sender, EventArgs e)
+    {
+
+    }
+
+    private void trayIcon_MouseDoubleClick(object sender, MouseEventArgs e)
+    {
+
+    }
 }
