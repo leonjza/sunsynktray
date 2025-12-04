@@ -1,10 +1,13 @@
 using System.Net;
+using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Security;
 
 namespace SunSynkTrayWin.Api;
 
@@ -119,8 +122,7 @@ public sealed class SunSynkClient
     private static string EncryptPassword(string publicKeyBase64, string password)
     {
         var publicKeyBytes = Convert.FromBase64String(publicKeyBase64);
-        using var rsa = RSA.Create();
-        rsa.ImportSubjectPublicKeyInfo(publicKeyBytes, out _);
+        using var rsa = CreateRsaFromSubjectPublicKeyInfo(publicKeyBytes);
         var encrypted = rsa.Encrypt(Encoding.UTF8.GetBytes(password), RSAEncryptionPadding.Pkcs1);
         return Convert.ToBase64String(encrypted);
     }
@@ -153,7 +155,8 @@ public sealed class SunSynkClient
         progress?.Report("Encrypting password...");
         var encryptedPassword = EncryptPassword(publicKey, password);
         var loginNonce = NowMs();
-        var sign = ComputeMd5Hex($"nonce={loginNonce}&source={Source}{publicKey[..Math.Min(10, publicKey.Length)]}");
+        var publicKeyPrefix = publicKey.Substring(0, Math.Min(10, publicKey.Length));
+        var sign = ComputeMd5Hex($"nonce={loginNonce}&source={Source}{publicKeyPrefix}");
         progress?.Report("Password encrypted; building login request.");
 
         var loginRequest = new LoginRequest
@@ -267,6 +270,20 @@ public sealed class SunSynkClient
             hex.Append(b.ToString("x2"));
         }
         return hex.ToString();
+    }
+
+    private static RSA CreateRsaFromSubjectPublicKeyInfo(byte[] subjectPublicKeyInfo)
+    {
+        // Parse SubjectPublicKeyInfo (as returned by the API) into RSA parameters using BouncyCastle for net48 compatibility.
+        var keyParam = (Org.BouncyCastle.Crypto.Parameters.RsaKeyParameters)Org.BouncyCastle.Security.PublicKeyFactory.CreateKey(subjectPublicKeyInfo);
+        var rsaParams = new RSAParameters
+        {
+            Modulus = keyParam.Modulus.ToByteArrayUnsigned(),
+            Exponent = keyParam.Exponent.ToByteArrayUnsigned()
+        };
+        var rsa = RSA.Create();
+        rsa.ImportParameters(rsaParams);
+        return rsa;
     }
 
     private record PublicKeyResponse

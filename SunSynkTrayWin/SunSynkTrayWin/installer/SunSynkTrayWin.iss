@@ -6,7 +6,7 @@
 #endif
 
 #ifndef MyPublishDir
-  #define MyPublishDir "..\\bin\\Release\\net8.0-windows\\win-x64\\publish"
+  #define MyPublishDir "..\\bin\\Release\\net48-windows\\publish"
 #endif
 
 #ifndef MyOutputDir

@@ -8,8 +8,8 @@ on:
 env:
   PROJECT_PATH: SunSynkTrayWin/SunSynkTrayWin/SunSynkTrayWin.csproj
   PROJECT_ROOT: SunSynkTrayWin
-  PUBLISH_DIR: SunSynkTrayWin/SunSynkTrayWin/bin/Release/net8.0-windows/win-x64/publish
-  PUBLISH_DIR_WIN: ${{ github.workspace }}\\SunSynkTrayWin\\SunSynkTrayWin\\bin\\Release\\net8.0-windows\\win-x64\\publish
+  PUBLISH_DIR: SunSynkTrayWin/SunSynkTrayWin/bin/Release/net48-windows/publish
+  PUBLISH_DIR_WIN: ${{ github.workspace }}\\SunSynkTrayWin\\SunSynkTrayWin\\bin\\Release\\net48-windows\\publish
   INSTALLER_SCRIPT: SunSynkTrayWin\\SunSynkTrayWin\\installer\\SunSynkTrayWin.iss
   INSTALLER_OUTPUT: ${{ github.workspace }}\\SunSynkTrayWin\\artifacts\\installer
 
@@ -43,13 +43,10 @@ jobs:
           echo "version_base=${TAG}" >> "$GITHUB_OUTPUT"
           echo "assembly_version=${CLEAN_TAG}.0" >> "$GITHUB_OUTPUT"
 
-      - name: Publish application (runtime-dependent, smaller portable)
+      - name: Publish application (net48)
         run: >
           dotnet publish $env:PROJECT_PATH
           -c Release
-          -r win-x64
-          --self-contained false
-          -p:PublishSingleFile=false
           -p:Version=${{ steps.version.outputs.version_base }}
           -p:AssemblyVersion=${{ steps.version.outputs.assembly_version }}
           -p:FileVersion=${{ steps.version.outputs.assembly_version }}

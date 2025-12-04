@@ -279,14 +279,41 @@ public partial class MainForm
         {
             Text = "Settings",
             StartPosition = FormStartPosition.CenterParent,
-            ClientSize = new Size(1250, 1050),
-            MinimumSize = new Size(1050, 820)
+            ClientSize = new Size(780, 650),
+            MinimumSize = new Size(740, 600)
         };
         _settingsForm.FormClosing += SettingsForm_FormClosing;
 
         settingsLayout.Parent?.Controls.Remove(settingsLayout);
         settingsLayout.Dock = DockStyle.Fill;
+        settingsLayout.Padding = new Padding(10);
         _settingsForm.Controls.Add(settingsLayout);
+
+        // Scale settings window and key rows for current DPI so HiDPI isn't cramped and LoDPI isn't oversized.
+        var scale = Math.Max(1f, _settingsForm.DeviceDpi / 96f);
+        var effectiveScale = Math.Min(scale, 1.75f);
+        _settingsForm.ClientSize = new Size(
+            (int)Math.Round(640 * effectiveScale),
+            (int)Math.Round(600 * effectiveScale));
+        _settingsForm.MinimumSize = new Size(
+            (int)Math.Round(620 * effectiveScale),
+            (int)Math.Round(560 * effectiveScale));
+        settingsLayout.Padding = new Padding((int)Math.Round(8 * effectiveScale));
+
+        if (settingsLayout.RowStyles.Count > 10)
+        {
+            var plantHeight = (int)Math.Round(32f * 8f * effectiveScale);
+            settingsLayout.RowStyles[7].Height = plantHeight;
+            settingsLayout.RowStyles[7].SizeType = SizeType.Absolute;
+
+            var lineHeight = authLogTextBox.Font?.GetHeight() ?? 16f;
+            var logHeight = (int)Math.Round(lineHeight * 6.0f * effectiveScale);
+            settingsLayout.RowStyles[10].Height = logHeight;
+            settingsLayout.RowStyles[10].SizeType = SizeType.Absolute;
+            authLogTextBox.Height = logHeight;
+        }
+
+        plantListBox.ItemHeight = (int)Math.Round(32 * effectiveScale);
         ApplyTheme(_currentTheme);
     }
 

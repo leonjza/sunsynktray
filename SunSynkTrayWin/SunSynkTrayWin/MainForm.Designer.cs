@@ -183,11 +183,10 @@ partial class MainForm
         liveLayout.Location = new Point(0, 42);
         liveLayout.Margin = new Padding(0);
         liveLayout.Name = "liveLayout";
-        liveLayout.RowCount = 5;
+        liveLayout.RowCount = 4;
         liveLayout.RowStyles.Add(new RowStyle());
-        liveLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 380F));
-        liveLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-        liveLayout.RowStyles.Add(new RowStyle());
+        liveLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 40F));
+        liveLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 60F));
         liveLayout.RowStyles.Add(new RowStyle());
         liveLayout.Size = new Size(1671, 1172);
         liveLayout.TabIndex = 0;
@@ -225,7 +224,7 @@ partial class MainForm
         flowView.Dock = DockStyle.Fill;
         flowView.Location = new Point(0, 140);
         flowView.Margin = new Padding(0);
-        flowView.MinimumSize = new Size(0, 360);
+        flowView.MinimumSize = new Size(0, 220);
         flowView.Name = "flowView";
         flowView.Padding = new Padding(24);
         flowView.Size = new Size(1663, 380);
@@ -237,13 +236,15 @@ partial class MainForm
         dayChart.Dock = DockStyle.Fill;
         dayChart.Location = new Point(0, 520);
         dayChart.Margin = new Padding(0);
-        dayChart.MinimumSize = new Size(0, 160);
+        dayChart.MinimumSize = new Size(0, 140);
         dayChart.Name = "dayChart";
         dayChart.Size = new Size(1663, 573);
         dayChart.TabIndex = 4;
         // 
         // liveActionsPanel
         // 
+        liveActionsPanel.AutoSize = true;
+        liveActionsPanel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
         liveActionsPanel.Controls.Add(refreshNowButton);
         liveActionsPanel.Controls.Add(pauseResumeButton);
         liveActionsPanel.Dock = DockStyle.Fill;
@@ -256,10 +257,11 @@ partial class MainForm
         // 
         // refreshNowButton
         // 
+        refreshNowButton.AutoSize = true;
+        refreshNowButton.AutoSizeMode = AutoSizeMode.GrowAndShrink;
         refreshNowButton.Location = new Point(12, 12);
         refreshNowButton.Margin = new Padding(6);
         refreshNowButton.Name = "refreshNowButton";
-        refreshNowButton.Size = new Size(170, 50);
         refreshNowButton.TabIndex = 0;
         refreshNowButton.Text = "Refresh now";
         refreshNowButton.UseVisualStyleBackColor = true;
@@ -267,10 +269,11 @@ partial class MainForm
         // 
         // pauseResumeButton
         // 
+        pauseResumeButton.AutoSize = true;
+        pauseResumeButton.AutoSizeMode = AutoSizeMode.GrowAndShrink;
         pauseResumeButton.Location = new Point(194, 12);
         pauseResumeButton.Margin = new Padding(6);
         pauseResumeButton.Name = "pauseResumeButton";
-        pauseResumeButton.Size = new Size(170, 50);
         pauseResumeButton.TabIndex = 1;
         pauseResumeButton.Text = "Pause polling";
         pauseResumeButton.UseVisualStyleBackColor = true;
@@ -278,6 +281,8 @@ partial class MainForm
         // 
         // settingsLayout
         // 
+        settingsLayout.AutoSize = true;
+        settingsLayout.AutoSizeMode = AutoSizeMode.GrowAndShrink;
         settingsLayout.ColumnCount = 2;
         settingsLayout.ColumnStyles.Add(new ColumnStyle());
         settingsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
@@ -295,25 +300,24 @@ partial class MainForm
         settingsLayout.Controls.Add(plantListBox, 1, 7);
         settingsLayout.Controls.Add(selectedPlantLabel, 1, 8);
         settingsLayout.Controls.Add(settingsButtonPanel, 1, 9);
-        settingsLayout.Controls.Add(authLogLabel, 0, 11);
-        settingsLayout.Controls.Add(authLogTextBox, 1, 11);
+        settingsLayout.Controls.Add(authLogLabel, 0, 10);
+        settingsLayout.Controls.Add(authLogTextBox, 1, 10);
         settingsLayout.Dock = DockStyle.Fill;
-        settingsLayout.Location = new Point(19, 21);
-        settingsLayout.Margin = new Padding(6);
+        settingsLayout.Location = new Point(10, 10);
+        settingsLayout.Margin = new Padding(4);
         settingsLayout.Name = "settingsLayout";
-        settingsLayout.RowCount = 12;
+        settingsLayout.RowCount = 11;
         settingsLayout.RowStyles.Add(new RowStyle());
         settingsLayout.RowStyles.Add(new RowStyle());
         settingsLayout.RowStyles.Add(new RowStyle());
         settingsLayout.RowStyles.Add(new RowStyle());
         settingsLayout.RowStyles.Add(new RowStyle());
         settingsLayout.RowStyles.Add(new RowStyle());
-        settingsLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 60F));
-        settingsLayout.RowStyles.Add(new RowStyle());
-        settingsLayout.RowStyles.Add(new RowStyle());
-        settingsLayout.RowStyles.Add(new RowStyle());
-        settingsLayout.RowStyles.Add(new RowStyle());
-        settingsLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        settingsLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        settingsLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 256F));
+        settingsLayout.RowStyles.Add(new RowStyle()); // selected plant label
+        settingsLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // buttons
+        settingsLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 110F)); // auth log (approx 5 rows)
         settingsLayout.Size = new Size(1617, 1397);
         settingsLayout.TabIndex = 0;
         // 
@@ -330,6 +334,7 @@ partial class MainForm
         readinessPanel.Size = new Size(261, 40);
         readinessPanel.TabIndex = 0;
         readinessPanel.WrapContents = false;
+        readinessPanel.Visible = false;
         // 
         // readinessDot
         // 
@@ -367,7 +372,6 @@ partial class MainForm
         usernameTextBox.Location = new Point(182, 58);
         usernameTextBox.Margin = new Padding(6);
         usernameTextBox.Name = "usernameTextBox";
-        usernameTextBox.PlaceholderText = "Your username";
         usernameTextBox.Size = new Size(1429, 39);
         usernameTextBox.TabIndex = 2;
         // 
@@ -387,7 +391,6 @@ partial class MainForm
         passwordTextBox.Location = new Point(182, 109);
         passwordTextBox.Margin = new Padding(6);
         passwordTextBox.Name = "passwordTextBox";
-        passwordTextBox.PlaceholderText = "Your password";
         passwordTextBox.Size = new Size(1429, 39);
         passwordTextBox.TabIndex = 4;
         passwordTextBox.UseSystemPasswordChar = true;
@@ -395,10 +398,10 @@ partial class MainForm
         // testConnectionButton
         // 
         testConnectionButton.AutoSize = true;
+        testConnectionButton.AutoSizeMode = AutoSizeMode.GrowAndShrink;
         testConnectionButton.Location = new Point(182, 160);
         testConnectionButton.Margin = new Padding(6, 6, 6, 21);
         testConnectionButton.Name = "testConnectionButton";
-        testConnectionButton.Size = new Size(245, 50);
         testConnectionButton.TabIndex = 5;
         testConnectionButton.Text = "Get plants";
         testConnectionButton.UseVisualStyleBackColor = true;
@@ -463,10 +466,11 @@ partial class MainForm
         plantListBox.Dock = DockStyle.Fill;
         plantListBox.FormattingEnabled = true;
         plantListBox.IntegralHeight = false;
+        plantListBox.ItemHeight = 32;
         plantListBox.Location = new Point(182, 394);
         plantListBox.Margin = new Padding(6);
         plantListBox.Name = "plantListBox";
-        plantListBox.Size = new Size(1429, 372);
+        plantListBox.Size = new Size(1429, 244);
         plantListBox.TabIndex = 10;
         plantListBox.SelectedIndexChanged += PlantListBox_SelectedIndexChanged;
         plantListBox.Format += PlantListBox_Format;
@@ -474,28 +478,30 @@ partial class MainForm
         // selectedPlantLabel
         // 
         selectedPlantLabel.AutoSize = true;
-        selectedPlantLabel.Location = new Point(182, 770);
+        selectedPlantLabel.Location = new Point(182, 608);
         selectedPlantLabel.Margin = new Padding(6, 0, 6, 0);
         selectedPlantLabel.Name = "selectedPlantLabel";
         selectedPlantLabel.Size = new Size(247, 32);
         selectedPlantLabel.TabIndex = 11;
         selectedPlantLabel.Text = "Selected plant: (none)";
-        // 
         // settingsButtonPanel
         // 
         settingsButtonPanel.AutoSize = true;
+        settingsButtonPanel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
         settingsButtonPanel.Controls.Add(saveSettingsButton);
         settingsButtonPanel.Controls.Add(cancelSettingsButton);
         settingsButtonPanel.Controls.Add(resetSettingsButton);
-        settingsButtonPanel.Location = new Point(182, 808);
+        settingsButtonPanel.Dock = DockStyle.Left;
+        settingsButtonPanel.Location = new Point(182, 642);
         settingsButtonPanel.Margin = new Padding(6);
         settingsButtonPanel.Name = "settingsButtonPanel";
-        settingsButtonPanel.Size = new Size(685, 62);
+        settingsButtonPanel.Size = new Size(300, 62);
         settingsButtonPanel.TabIndex = 12;
         // 
         // saveSettingsButton
         // 
         saveSettingsButton.AutoSize = true;
+        saveSettingsButton.AutoSizeMode = AutoSizeMode.GrowAndShrink;
         saveSettingsButton.BackColor = Color.FromArgb(58, 134, 255);
         saveSettingsButton.FlatAppearance.BorderSize = 0;
         saveSettingsButton.FlatStyle = FlatStyle.Flat;
@@ -503,7 +509,6 @@ partial class MainForm
         saveSettingsButton.Location = new Point(6, 6);
         saveSettingsButton.Margin = new Padding(6);
         saveSettingsButton.Name = "saveSettingsButton";
-        saveSettingsButton.Size = new Size(137, 50);
         saveSettingsButton.TabIndex = 0;
         saveSettingsButton.Text = "OK";
         saveSettingsButton.UseVisualStyleBackColor = false;
@@ -512,10 +517,10 @@ partial class MainForm
         // cancelSettingsButton
         // 
         cancelSettingsButton.AutoSize = true;
+        cancelSettingsButton.AutoSizeMode = AutoSizeMode.GrowAndShrink;
         cancelSettingsButton.Location = new Point(155, 6);
         cancelSettingsButton.Margin = new Padding(6);
         cancelSettingsButton.Name = "cancelSettingsButton";
-        cancelSettingsButton.Size = new Size(162, 50);
         cancelSettingsButton.TabIndex = 2;
         cancelSettingsButton.Text = "Cancel";
         cancelSettingsButton.UseVisualStyleBackColor = true;
@@ -524,10 +529,10 @@ partial class MainForm
         // resetSettingsButton
         // 
         resetSettingsButton.AutoSize = true;
-        resetSettingsButton.Location = new Point(529, 6);
-        resetSettingsButton.Margin = new Padding(206, 6, 6, 6);
+        resetSettingsButton.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+        resetSettingsButton.Location = new Point(329, 6);
+        resetSettingsButton.Margin = new Padding(6);
         resetSettingsButton.Name = "resetSettingsButton";
-        resetSettingsButton.Size = new Size(150, 50);
         resetSettingsButton.TabIndex = 1;
         resetSettingsButton.Text = "Reset";
         resetSettingsButton.UseVisualStyleBackColor = true;
@@ -536,7 +541,7 @@ partial class MainForm
         // authLogLabel
         // 
         authLogLabel.AutoSize = true;
-        authLogLabel.Location = new Point(6, 876);
+        authLogLabel.Location = new Point(6, 628);
         authLogLabel.Margin = new Padding(6, 0, 6, 0);
         authLogLabel.Name = "authLogLabel";
         authLogLabel.Size = new Size(147, 32);
@@ -546,14 +551,14 @@ partial class MainForm
         // authLogTextBox
         // 
         authLogTextBox.BackColor = SystemColors.Window;
-        authLogTextBox.Dock = DockStyle.Fill;
-        authLogTextBox.Location = new Point(182, 882);
-        authLogTextBox.Margin = new Padding(6, 6, 6, 21);
+        authLogTextBox.Dock = DockStyle.Top;
+        authLogTextBox.Location = new Point(182, 628);
+        authLogTextBox.Margin = new Padding(6, 6, 6, 12);
         authLogTextBox.Multiline = true;
         authLogTextBox.Name = "authLogTextBox";
         authLogTextBox.ReadOnly = true;
         authLogTextBox.ScrollBars = ScrollBars.Vertical;
-        authLogTextBox.Size = new Size(1429, 562);
+        authLogTextBox.Size = new Size(1429, 90);
         authLogTextBox.TabIndex = 17;
         // 
         // credentialsHintLabel
@@ -565,15 +570,15 @@ partial class MainForm
         // 
         // MainForm
         // 
-        AutoScaleDimensions = new SizeF(13F, 32F);
-        AutoScaleMode = AutoScaleMode.Font;
-        ClientSize = new Size(1400, 900);
+        AutoScaleDimensions = new SizeF(96F, 96F);
+        AutoScaleMode = AutoScaleMode.Dpi;
+        ClientSize = new Size(700, 680);
         Controls.Add(liveLayout);
         Controls.Add(mainMenu);
         Icon = new Icon(Path.Combine(AppContext.BaseDirectory, "sunsynk.ico"));
         MainMenuStrip = mainMenu;
         Margin = new Padding(6);
-        MinimumSize = new Size(1501, 1285);
+        MinimumSize = new Size(700, 680);
         Name = "MainForm";
         StartPosition = FormStartPosition.CenterScreen;
         Text = "SunSynk Tray";

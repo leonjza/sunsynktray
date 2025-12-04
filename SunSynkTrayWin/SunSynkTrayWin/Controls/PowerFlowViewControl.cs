@@ -17,14 +17,16 @@ public class PowerFlowViewControl : UserControl
     private float _animationOffset;
     private PowerFlowData? _flow;
     private readonly ThemePaletteHost _paletteHost = new(ThemeManager.LightPalette);
+    private float _scale = 1f;
 
     public PowerFlowViewControl()
     {
         DoubleBuffered = true;
         ResizeRedraw = true;
         BackColor = _paletteHost.Palette.Window;
-        Padding = new Padding(24);
-        MinimumSize = new Size(0, 360);
+        AutoScaleMode = AutoScaleMode.Dpi;
+        Padding = new Padding(16);
+        MinimumSize = new Size(0, 260);
 
         _titleFont = new Font(Font.FontFamily, 9F, FontStyle.Regular);
         _valueFont = new Font(Font.FontFamily, 11F, FontStyle.Bold);
@@ -78,13 +80,21 @@ public class PowerFlowViewControl : UserControl
         }
 
         g.Clear(palette.Window);
+        _scale = GetScale(e.Graphics);
+        var scale = _scale;
         var bounds = ClientRectangle;
+        var padding = (int)Math.Round(15 * scale);
+        if (Padding.All != padding)
+        {
+            Padding = new Padding(padding);
+        }
+
         bounds.Inflate(-Padding.Horizontal / 2, -Padding.Vertical / 2);
 
-        var nodeWidth = Math.Min(220, Math.Max(160, bounds.Width / 5));
-        var nodeHeight = 96;
-        var hSpacing = nodeWidth + 120;
-        var vSpacing = nodeHeight + 60;
+        var nodeWidth = Math.Min((int)(200 * scale), Math.Max((int)(118 * scale), bounds.Width / 5));
+        var nodeHeight = (int)(70 * scale);
+        var hSpacing = nodeWidth + (int)(82 * scale);
+        var vSpacing = nodeHeight + (int)(32 * scale);
         var center = new Point(bounds.Left + bounds.Width / 2, bounds.Top + bounds.Height / 2);
 
         var inverterRect = CenterRect(center, nodeWidth, nodeHeight);
@@ -227,15 +237,15 @@ public class PowerFlowViewControl : UserControl
 
     private void DrawConnector(Graphics g, Point start, Point end, Color color, bool active)
     {
-        var penWidth = active ? 3.5f : 2f;
+        var penWidth = (active ? 3.3f : 2f) * _scale;
         using var pen = new Pen(color, penWidth) { StartCap = LineCap.Round, EndCap = LineCap.Round };
         g.DrawLine(pen, start, end);
     }
 
     private void DrawFlowDots(Graphics g, ReadOnlySpan<Connector> connectors)
     {
-        const float spacing = 42f;
-        const float radius = 4f;
+        var spacing = 28f * _scale;
+        var radius = 3.2f * _scale;
         foreach (var connector in connectors)
         {
             if (!connector.HasDirection)
@@ -245,7 +255,7 @@ public class PowerFlowViewControl : UserControl
 
             var dx = connector.End.X - connector.Start.X;
             var dy = connector.End.Y - connector.Start.Y;
-            var length = MathF.Sqrt(dx * dx + dy * dy);
+            var length = (float)Math.Sqrt(dx * dx + dy * dy);
             if (length < spacing)
             {
                 continue;
@@ -379,5 +389,24 @@ public class PowerFlowViewControl : UserControl
     private readonly record struct Connector(Point Start, Point End, Color Color, bool Active)
     {
         public bool HasDirection { get; init; }
+    }
+
+    private static float GetScale(Graphics g)
+    {
+        var dpiScale = g.DpiX / 96f;
+        if (dpiScale <= 1f)
+        {
+            return Clamp(dpiScale * 0.95f, 0.85f, 1.0f);
+        }
+
+        var boosted = dpiScale * 1.35f; // modest boost on HiDPI
+        return Clamp(boosted, 1.15f, 2.0f);
+    }
+
+    private static float Clamp(float value, float min, float max)
+    {
+        if (value < min) return min;
+        if (value > max) return max;
+        return value;
     }
 }

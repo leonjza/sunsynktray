@@ -127,11 +127,11 @@ public partial class MainForm
         var socColor = StatusColorHelper.GetSocColor(soc);
         using var bmp = new Bitmap(size, size);
         using var g = Graphics.FromImage(bmp);
-        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        //g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
         g.Clear(Color.Transparent);
 
         var text = $"{soc:0}";
-        using var font = new Font("Arial Narrow", 10, FontStyle.Regular);
+        using var font = new Font("Arial Narrow", 14, FontStyle.Regular);
         var textSize = g.MeasureString(text, font);
         var textPoint = new PointF(
             (size - textSize.Width) / 2f,
