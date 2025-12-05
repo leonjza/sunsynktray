@@ -168,9 +168,11 @@ public partial class MainForm
                 onSuccess: UpdateReadinessIndicator,
                 log: AppendAuthLog);
         }
-        catch
+        catch (Exception ex)
         {
-            // Errors are logged; keep flow going so UI remains responsive.
+            AppendAuthLog($"Loading plants failed: {ex.Message}");
+            MessageBox.Show(this, $"Unable to load plants: {ex.Message}", "Loading plants failed",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -260,12 +262,15 @@ public partial class MainForm
 
     private void UpdateReadinessIndicator()
     {
-        _appState.RefreshReadiness();
-        var plantControlsVisible = _appState.IsAuthenticated;
-        SettingsForm.plantLabel.Visible = plantControlsVisible;
-        SettingsForm.plantListBox.Visible = plantControlsVisible;
-        SettingsForm.selectedPlantLabel.Text = _appState.PlantSelection.DisplayLabel;
-        SettingsForm.selectedPlantLabel.Visible = plantControlsVisible && _appState.PlantSelection.Id.HasValue;
+        this.InvokeIfRequired(() =>
+        {
+            _appState.RefreshReadiness();
+            var plantControlsVisible = _appState.IsAuthenticated;
+            SettingsForm.plantLabel.Visible = plantControlsVisible;
+            SettingsForm.plantListBox.Visible = plantControlsVisible;
+            SettingsForm.selectedPlantLabel.Text = _appState.PlantSelection.DisplayLabel;
+            SettingsForm.selectedPlantLabel.Visible = plantControlsVisible && _appState.PlantSelection.Id.HasValue;
+        });
     }
 
     private void EnsureSettingsWindow()

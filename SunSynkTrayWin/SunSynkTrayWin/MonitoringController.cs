@@ -138,6 +138,7 @@ public sealed class MonitoringController : IDisposable
         try
         {
             _isFetching = true;
+            var isManual = source.IndexOf("refresh", StringComparison.OrdinalIgnoreCase) >= 0;
             await StatusOperationRunner.RunWithStatusAsync(
                 _state.Status,
                 source,
@@ -152,7 +153,14 @@ public sealed class MonitoringController : IDisposable
                     _onDataUpdated(flow, dayEnergy);
                     _state.RefreshReadiness();
                 },
-                onError: _ => _state.RefreshReadiness()).ConfigureAwait(false);
+                onError: ex =>
+                {
+                    _state.RefreshReadiness();
+                    if (isManual)
+                    {
+                        _showWarning("Refresh failed", ex.Message);
+                    }
+                }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
