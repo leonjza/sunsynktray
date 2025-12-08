@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Text;
 using System.Windows.Forms;
 using SunSynkTrayWin.Api;
 
@@ -123,35 +124,31 @@ public partial class MainForm
 
     private Icon? RenderSocIcon(double soc, bool charging)
     {
-        const int size = 32;
         var socColor = StatusColorHelper.GetSocColor(soc);
-        using var bmp = new Bitmap(size, size);
+        using var referenceGraphics = Graphics.FromHwnd(IntPtr.Zero);
+        var dpiScale = referenceGraphics.DpiX / 96f;
+        var targetSize = (int)Math.Max(16, Math.Round(SystemInformation.SmallIconSize.Width * dpiScale));
+
+        using var bmp = new Bitmap(targetSize, targetSize);
+        bmp.SetResolution(referenceGraphics.DpiX, referenceGraphics.DpiY);
+
         using var g = Graphics.FromImage(bmp);
-        //g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
         g.Clear(Color.Transparent);
+        g.SmoothingMode = SmoothingMode.None;
+        g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+        g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
 
-        var dpiScale = g.DpiX / 96f;
-        var fontSize = dpiScale > 1f ? 14f / dpiScale : 14f;
+        var fontSize = Math.Max(8f, (float)Math.Round(targetSize * 0.62f));
         var text = $"{soc:0}";
-        using var font = new Font("Arial Narrow", fontSize, FontStyle.Regular);
-        var textSize = g.MeasureString(text, font);
-        var textPoint = new PointF(
-            (size - textSize.Width) / 2f,
-            (size - textSize.Height) / 2f);
+        using var font = new Font("Segoe UI Semibold", fontSize, FontStyle.Regular, GraphicsUnit.Pixel);
+        var textRect = new Rectangle(0, 0, targetSize, targetSize);
+        var flags = TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding;
 
-        // Soft outline for contrast on both light/dark backgrounds.
-        using var outlineBrush = new SolidBrush(Color.FromArgb(180, Color.Black));
-        for (var dx = -1; dx <= 1; dx++)
-        {
-            for (var dy = -1; dy <= 1; dy++)
-            {
-                if (dx == 0 && dy == 0) continue;
-                g.DrawString(text, font, outlineBrush, textPoint.X + dx, textPoint.Y + dy);
-            }
-        }
-
-        using var textBrush = new SolidBrush(socColor);
-        g.DrawString(text, font, textBrush, textPoint);
+        // Light outline for contrast on mixed backgrounds.
+        TextRenderer.DrawText(g, text, font,
+            new Rectangle(textRect.X + 1, textRect.Y + 1, textRect.Width, textRect.Height),
+            Color.FromArgb(180, Color.Black), Color.Transparent, flags);
+        TextRenderer.DrawText(g, text, font, textRect, socColor, Color.Transparent, flags);
 
         var handle = bmp.GetHicon();
         return Icon.FromHandle(handle);
