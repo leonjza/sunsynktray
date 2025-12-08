@@ -1,0 +1,24 @@
+name: API Smoke Test
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    env:
+      SUNSYNK_USERNAME: virtual@e-linter.com
+      SUNSYNK_PASSWORD: elinter@0512
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y jq
+
+      - name: Run API smoke test
+        run: bash tests/api-smoke.sh
