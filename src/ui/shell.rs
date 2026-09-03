@@ -147,5 +147,5 @@ fn render_status_bar(
             "Settings".to_owned()
         })
         .child(div().flex_1())
-        .child("v0.1.0")
+        .child(format!("v{}", env!("CARGO_PKG_VERSION")))
 }

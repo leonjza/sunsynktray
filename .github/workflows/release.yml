@@ -5,92 +5,104 @@ on:
     tags:
       - "v*"
 
-env:
-  PROJECT_PATH: SunSynkTrayWin/SunSynkTrayWin/SunSynkTrayWin.csproj
-  PROJECT_ROOT: SunSynkTrayWin
-  PUBLISH_DIR: SunSynkTrayWin/SunSynkTrayWin/bin/Release/net48-windows/publish
-  PUBLISH_DIR_WIN: ${{ github.workspace }}\\SunSynkTrayWin\\SunSynkTrayWin\\bin\\Release\\net48-windows\\publish
-  INSTALLER_SCRIPT: SunSynkTrayWin\\SunSynkTrayWin\\installer\\SunSynkTrayWin.iss
-  INSTALLER_OUTPUT: ${{ github.workspace }}\\SunSynkTrayWin\\artifacts\\installer
-
 permissions:
   contents: write
 
 jobs:
-  build:
+  windows:
     runs-on: windows-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
         with:
-          dotnet-version: "8.0.x"
+          targets: x86_64-pc-windows-msvc
 
-      - name: Restore
-        run: dotnet restore $env:PROJECT_PATH
-        shell: pwsh
-
-      - name: Compute versions
-        id: version
+      - name: Set release version
+        run: bash packaging/set-version.sh "${GITHUB_REF_NAME#v}"
         shell: bash
+
+      - name: Install NSIS
+        run: choco install -y nsis
+        shell: pwsh
+
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked
+        shell: pwsh
+
+      - name: Build portable binary
+        run: cargo build --release --target x86_64-pc-windows-msvc
+        shell: pwsh
+
+      - name: Build NSIS installer
+        run: cargo packager --release --target x86_64-pc-windows-msvc
+        shell: pwsh
+
+      - name: Package portable ZIP
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
-          if [ -z "$TAG" ]; then TAG="0.0.0"; fi
-          CLEAN_TAG="${TAG%%-*}"
-          echo "version_base=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "assembly_version=${CLEAN_TAG}.0" >> "$GITHUB_OUTPUT"
-
-      - name: Publish application (net48)
-        run: >
-          dotnet publish $env:PROJECT_PATH
-          -c Release
-          -p:Version=${{ steps.version.outputs.version_base }}
-          -p:AssemblyVersion=${{ steps.version.outputs.assembly_version }}
-          -p:FileVersion=${{ steps.version.outputs.assembly_version }}
-          -p:InformationalVersion=${{ steps.version.outputs.version_base }}
-          -p:ContinuousIntegrationBuild=true
+          New-Item -ItemType Directory -Force -Path dist\portable | Out-Null
+          Copy-Item target\x86_64-pc-windows-msvc\release\suntray.exe dist\portable\SunTray.exe
+          Compress-Archive -Path dist\portable\SunTray.exe -DestinationPath dist\SunTray-${{ github.ref_name }}-windows-x64-portable.zip
         shell: pwsh
 
-      - name: Install Inno Setup
-        run: choco install -y innosetup
-        shell: pwsh
-
-      - name: Build installer
-        run: >
-          iscc $env:INSTALLER_SCRIPT
-          /dMyAppVersion="${{ steps.version.outputs.version_base }}"
-          /dMyPublishDir="$env:PUBLISH_DIR_WIN"
-          /dMyOutputDir="$env:INSTALLER_OUTPUT"
-        shell: pwsh
-
-      - name: Package portable zip
-        run: |
-          New-Item -ItemType Directory -Force -Path SunSynkTrayWin\\artifacts | Out-Null
-          Compress-Archive -Path "$env:PUBLISH_DIR\*" -DestinationPath "SunSynkTrayWin\\artifacts\\SunSynkTrayWin-portable-${{ steps.version.outputs.version_base }}.zip"
-        shell: pwsh
-
-      - name: Upload portable artifact
+      - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: SunSynkTrayWin-portable-${{ steps.version.outputs.version_base }}
-          path: SunSynkTrayWin/artifacts/SunSynkTrayWin-portable-${{ steps.version.outputs.version_base }}.zip
+          name: SunTray-windows-x64-${{ github.ref_name }}
+          path: dist/**
+          if-no-files-found: error
 
-      - name: Upload installer artifact
+  macos:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Set release version
+        run: bash packaging/set-version.sh "${GITHUB_REF_NAME#v}"
+        shell: bash
+
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked
+
+      - name: Build release binary
+        run: cargo build --release --target aarch64-apple-darwin
+
+      - name: Build macOS DMG
+        run: cargo packager --release --target aarch64-apple-darwin
+
+      - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: SunSynkTrayWin-installer-${{ steps.version.outputs.version_base }}
-          path: SunSynkTrayWin/artifacts/installer/SunSynkTrayWinSetup.exe
+          name: SunTray-macos-arm64-${{ github.ref_name }}
+          path: dist/**
+          if-no-files-found: error
+
+  release:
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
-          name: SunSynkTray ${{ steps.version.outputs.version_base }}
-          files: |
-            SunSynkTrayWin/artifacts/SunSynkTrayWin-portable-${{ steps.version.outputs.version_base }}.zip
-            SunSynkTrayWin/artifacts/installer/SunSynkTrayWinSetup.exe
+          name: SunTray ${{ github.ref_name }}
+          files: dist/**
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

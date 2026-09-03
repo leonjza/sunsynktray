@@ -25,6 +25,27 @@ keyring = "4.2"
 md-5 = "0.10"
 rsa = "0.9"
 
+[package.metadata.packager]
+product-name = "SunTray"
+identifier = "com.suntray.app"
+publisher = "SunTray"
+formats = ["default"]
+out-dir = "./dist"
+
+[[package.metadata.packager.binaries]]
+path = "suntray"
+main = true
+
+[package.metadata.packager.macos]
+background-app = true
+minimum-system-version = "13.0"
+info-plist-path = "packaging/macos/Info.plist"
+
+[package.metadata.packager.nsis]
+installer-mode = "currentUser"
+compression = "lzma"
+appdata-paths = ["$LOCALAPPDATA/$PUBLISHER/$PRODUCTNAME"]
+
 [profile.release]
 lto = true
 codegen-units = 1
