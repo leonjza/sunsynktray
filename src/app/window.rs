@@ -15,6 +15,15 @@ pub(crate) fn open_main_window(cx: &mut App, state: Arc<MonitorState>) {
             ..Default::default()
         },
         |window, cx| {
+            #[cfg(target_os = "windows")]
+            window.on_window_should_close(cx, |_, cx| {
+                // Closing the main window hides SunTray to the tray instead of
+                // destroying the window. The tray's Quit action remains the
+                // explicit way to exit the application.
+                cx.hide();
+                false
+            });
+
             let view = cx.new(|cx| Dashboard::new(state, window, cx));
             cx.new(|cx| gpui_kit::component::Root::new(view, window, cx))
         },
