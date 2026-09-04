@@ -33,10 +33,6 @@ jobs:
         run: cargo install cargo-packager --locked
         shell: pwsh
 
-      - name: Build portable binary
-        run: cargo build --release --target x86_64-pc-windows-msvc
-        shell: pwsh
-
       - name: Build NSIS installer
         run: cargo packager --release --target x86_64-pc-windows-msvc
         shell: pwsh
@@ -44,7 +40,7 @@ jobs:
       - name: Package portable ZIP
         run: |
           New-Item -ItemType Directory -Force -Path dist\portable | Out-Null
-          Copy-Item target\x86_64-pc-windows-msvc\release\suntray.exe dist\portable\SunTray.exe
+          Copy-Item dist\suntray.exe dist\portable\SunTray.exe
           Compress-Archive -Path dist\portable\SunTray.exe -DestinationPath dist\SunTray-${{ github.ref_name }}-windows-x64-portable.zip
         shell: pwsh
 
@@ -52,7 +48,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: SunTray-windows-x64-${{ github.ref_name }}
-          path: dist/**
+          path: |
+            dist/SunTray-${{ github.ref_name }}-windows-x64-portable.zip
+            dist/*-setup.exe
           if-no-files-found: error
 
   macos:
@@ -84,7 +82,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: SunTray-macos-arm64-${{ github.ref_name }}
-          path: dist/**
+          path: dist/*.dmg
           if-no-files-found: error
 
   release:
@@ -103,6 +101,9 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: SunTray ${{ github.ref_name }}
-          files: dist/**
+          files: |
+            dist/SunTray-${{ github.ref_name }}-windows-x64-portable.zip
+            dist/*-setup.exe
+            dist/*.dmg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
