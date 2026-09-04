@@ -49,8 +49,8 @@ pub(crate) fn render(value: Option<&str>, symbol: &str) -> Result<Icon, String> 
         .map_err(|error| error.to_string())?;
     if bits.is_null() {
         unsafe {
-            DeleteObject(bitmap.into());
-            DeleteDC(dc);
+            let _ = DeleteObject(bitmap.into());
+            let _ = DeleteDC(dc);
         }
         return Err("Windows returned a null icon buffer".into());
     }
@@ -109,10 +109,10 @@ pub(crate) fn render(value: Option<&str>, symbol: &str) -> Result<Icon, String> 
     };
     unsafe {
         SelectObject(dc, old_font);
-        DeleteObject(font.into());
+        let _ = DeleteObject(font.into());
         SelectObject(dc, old_bitmap);
-        DeleteObject(bitmap.into());
-        DeleteDC(dc);
+        let _ = DeleteObject(bitmap.into());
+        let _ = DeleteDC(dc);
     }
 
     let mut rgba = Vec::with_capacity(bgra.len());
