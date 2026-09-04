@@ -44,7 +44,11 @@ jobs:
       - name: Package portable ZIP
         run: |
           New-Item -ItemType Directory -Force -Path dist\portable | Out-Null
-          Copy-Item dist\suntray.exe dist\portable\SunTray.exe
+          $binary = "target\x86_64-pc-windows-msvc\release\suntray.exe"
+          if (-not (Test-Path $binary)) {
+            throw "Release binary not found: $binary"
+          }
+          Copy-Item $binary dist\portable\SunTray.exe
           Compress-Archive -Path dist\portable\SunTray.exe -DestinationPath dist\SunTray-${{ github.ref_name }}-windows-x64-portable.zip
         shell: pwsh
 
