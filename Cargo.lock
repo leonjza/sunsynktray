@@ -6803,6 +6803,7 @@ dependencies = [
  "gpui-tray",
  "keyring",
  "md-5",
+ "raw-window-handle",
  "reqwest",
  "rsa",
  "rust-embed",

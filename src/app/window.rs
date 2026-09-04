@@ -16,11 +16,11 @@ pub(crate) fn open_main_window(cx: &mut App, state: Arc<MonitorState>) {
         },
         |window, cx| {
             #[cfg(target_os = "windows")]
-            window.on_window_should_close(cx, |_, cx| {
+            window.on_window_should_close(cx, |window, _cx| {
                 // Closing the main window hides SunTray to the tray instead of
                 // destroying the window. The tray's Quit action remains the
                 // explicit way to exit the application.
-                cx.hide();
+                crate::platform::hide_main_window(window);
                 false
             });
 
