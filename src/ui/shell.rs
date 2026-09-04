@@ -1,10 +1,10 @@
 use crate::app::{Dashboard, Screen};
-use gpui::prelude::FluentBuilder;
-use gpui::*;
-use gpui_component::{
+use gpui_kit::component::{
     button::{Button, ButtonVariants},
     ActiveTheme, Icon, IconName, Sizable, StyledExt, Theme,
 };
+use gpui_kit::prelude::FluentBuilder;
+use gpui_kit::*;
 
 pub(crate) struct StatusBar {
     screen: Screen,

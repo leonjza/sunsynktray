@@ -13,7 +13,6 @@ mod sunsynk;
 mod ui;
 
 use anyhow::Result;
-use gpui::*;
 use tracing_subscriber::EnvFilter;
 
 fn main() -> Result<()> {
@@ -25,10 +24,11 @@ fn main() -> Result<()> {
     if args.iter().any(|arg| arg == "--inspect-api") {
         return diagnostics::run(&args, settings);
     }
-    Application::new()
+    gpui_kit::application()
         .with_assets(assets::Assets)
         .run(move |cx| {
-            gpui_component::init(cx);
+            gpui_kit::init(cx);
+            gpui_kit::component::Theme::sync_system_appearance(None, cx);
             platform::tray::install(cx);
             let state = app::MonitorState::new(settings.clone());
             cx.set_global(app::MonitorStateGlobal(state.clone()));

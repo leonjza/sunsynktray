@@ -2,7 +2,7 @@ use crate::{
     domain::{EnergySnapshot, HistoryPoint, HistorySeries},
     storage::config::Settings,
 };
-use gpui::Global;
+use gpui_kit::Global;
 use std::sync::{Arc, Mutex};
 
 pub(crate) struct MonitorState {

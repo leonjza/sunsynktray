@@ -6,7 +6,7 @@ use crate::{
     domain::{EnergySnapshot, HistorySeries},
     storage::credentials,
 };
-use gpui::*;
+use gpui_kit::*;
 
 use super::{ConnectionState, Dashboard};
 use crate::app::Screen;

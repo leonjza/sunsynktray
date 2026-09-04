@@ -2,15 +2,15 @@ use crate::{
     app::{Dashboard, TrayMetric},
     domain::InverterSummary,
 };
-use gpui::prelude::FluentBuilder;
-use gpui::*;
-use gpui_component::{
+use gpui_kit::component::{
     button::{Button, ButtonVariants},
     input::{Input, InputState},
     scroll::ScrollableElement,
     switch::Switch,
     Disableable, Sizable, StyledExt, Theme,
 };
+use gpui_kit::prelude::FluentBuilder;
+use gpui_kit::*;
 
 pub(crate) fn render(view: SettingsView<'_>) -> AnyElement {
     let SettingsView {

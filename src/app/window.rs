@@ -1,5 +1,5 @@
 use super::{Dashboard, MonitorState};
-use gpui::*;
+use gpui_kit::*;
 use std::sync::Arc;
 
 pub(crate) fn open_main_window(cx: &mut App, state: Arc<MonitorState>) {
@@ -7,7 +7,7 @@ pub(crate) fn open_main_window(cx: &mut App, state: Arc<MonitorState>) {
     if let Err(error) = cx.open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
-            titlebar: Some(gpui_component::TitleBar::title_bar_options()),
+            titlebar: Some(gpui_kit::component::TitleBar::title_bar_options()),
             is_resizable: true,
             focus: true,
             show: true,
@@ -16,7 +16,7 @@ pub(crate) fn open_main_window(cx: &mut App, state: Arc<MonitorState>) {
         },
         |window, cx| {
             let view = cx.new(|cx| Dashboard::new(state, window, cx));
-            cx.new(|cx| gpui_component::Root::new(view, window, cx))
+            cx.new(|cx| gpui_kit::component::Root::new(view, window, cx))
         },
     ) {
         tracing::error!(%error, "failed to open SunTray window");

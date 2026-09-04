@@ -6,9 +6,9 @@ use crate::{
         shell,
     },
 };
-use gpui::prelude::InteractiveElement;
-use gpui::*;
-use gpui_component::{ActiveTheme, StyledExt};
+use gpui_kit::component::{ActiveTheme, StyledExt};
+use gpui_kit::prelude::InteractiveElement;
+use gpui_kit::*;
 
 impl Render for Dashboard {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -50,7 +50,7 @@ impl Render for Dashboard {
                 hover_entity.update(cx, |dashboard, cx| dashboard.hover_history(None, cx));
             }
         });
-        root.child(gpui_component::TitleBar::new())
+        root.child(gpui_kit::component::TitleBar::new())
             .child(shell::toolbar(theme, self.screen, entity.clone()))
             .child(match self.screen {
                 Screen::Dashboard => dashboard_view::render(

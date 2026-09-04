@@ -5,12 +5,12 @@ use crate::{
     ui::format::format_energy,
     ui::{history_chart as history_chart_module, power_flow as power_flow_view},
 };
-use gpui::*;
-use gpui_component::{
+use gpui_kit::component::{
     button::{Button, ButtonVariants},
     spinner::Spinner,
     IconName, Sizable, StyledExt, Theme,
 };
+use gpui_kit::*;
 use std::sync::{Arc, Mutex};
 
 #[allow(clippy::too_many_arguments)]

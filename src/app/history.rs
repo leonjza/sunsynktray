@@ -1,5 +1,5 @@
 use crate::{app::polling::protocol::Command as PollCommand, app::Dashboard};
-use gpui::*;
+use gpui_kit::*;
 
 impl Dashboard {
     pub(crate) fn change_history_day(&mut self, offset: i64, cx: &mut Context<Self>) {

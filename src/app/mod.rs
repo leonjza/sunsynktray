@@ -2,9 +2,8 @@ use crate::{
     app::polling::protocol::Command as PollCommand, domain::InverterSummary, platform::tray,
     storage::credentials, ui::shell::StatusBar,
 };
-use gpui::Timer;
-use gpui::*;
-use gpui_component::input::InputState;
+use gpui_kit::component::input::InputState;
+use gpui_kit::*;
 use std::{
     sync::{atomic::AtomicU64, Arc, Mutex},
     time::Duration,
@@ -92,15 +91,10 @@ impl Dashboard {
         let status_bar = cx.new(|_| StatusBar::new());
         let status_entity = status_bar.clone();
         cx.spawn(async move |_, cx| loop {
-            Timer::after(Duration::from_secs(1)).await;
-            if status_entity
-                .update(cx, |status, cx| {
-                    status.tick_countdown(cx);
-                })
-                .is_err()
-            {
-                break;
-            }
+            cx.background_executor().timer(Duration::from_secs(1)).await;
+            status_entity.update(cx, |status, cx| {
+                status.tick_countdown(cx);
+            });
         })
         .detach();
         let dashboard = Self {
@@ -155,10 +149,10 @@ impl Dashboard {
         if let Some((email, password)) = startup_credentials {
             let entity = cx.entity().clone();
             cx.spawn(async move |_, cx| {
-                Timer::after(Duration::from_millis(10)).await;
-                entity
-                    .update(cx, |dashboard, cx| dashboard.connect(email, password, cx))
-                    .ok();
+                cx.background_executor()
+                    .timer(Duration::from_millis(10))
+                    .await;
+                entity.update(cx, |dashboard, cx| dashboard.connect(email, password, cx));
             })
             .detach();
         }

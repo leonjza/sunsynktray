@@ -1,6 +1,6 @@
 use crate::{app::Dashboard, domain::EnergySnapshot, ui::format::format_power};
-use gpui::*;
-use gpui_component::{Icon, IconName, StyledExt, Theme};
+use gpui_kit::component::{Icon, IconName, StyledExt, Theme};
+use gpui_kit::*;
 use std::time::Duration;
 
 pub(crate) fn render(

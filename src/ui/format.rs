@@ -1,4 +1,4 @@
-use gpui::{rgb, Hsla};
+use gpui_kit::{rgb, Hsla};
 
 pub(crate) fn history_value(label: &str, value: f64) -> String {
     if label.to_ascii_lowercase().contains("soc") {

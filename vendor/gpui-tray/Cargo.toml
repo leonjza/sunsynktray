@@ -14,7 +14,7 @@ menu-state = []
 
 [dependencies]
 async-channel = "2.5"
-gpui = { version = "0.2.2", default-features = false }
+gpui = { package = "gpui-pre", version = "0.3.1", default-features = false }
 log = "0.4"
 thiserror = "2"
 

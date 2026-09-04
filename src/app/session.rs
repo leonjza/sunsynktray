@@ -3,7 +3,7 @@ use crate::{
     storage::credentials,
     sunsynk::SunsynkClient,
 };
-use gpui::*;
+use gpui_kit::*;
 use std::{sync::atomic::Ordering, thread};
 
 use super::{ConnectionState, Dashboard};
@@ -138,146 +138,144 @@ impl Dashboard {
         let entity = cx.entity().clone();
         cx.spawn(async move |_, cx| {
             while let Some(result) = receiver.recv().await {
-                entity
-                    .update(cx, |dashboard, cx| {
-                        match result {
-                            ConnectResult::Connected {
-                                generation,
-                                inverters,
-                                snapshot,
-                                selected_serial: selected,
-                                refresh_token,
-                                history,
-                            } => {
-                                if generation != dashboard.connect_generation {
-                                    return;
-                                }
-                                dashboard.fetching = false;
-                                if !dashboard.history_is_manual {
-                                    dashboard.history_date = chrono::Local::now().date_naive();
-                                }
-                                dashboard.selected_serial = selected.clone();
-                                dashboard.inverters = inverters;
-                                dashboard.refresh_token = refresh_token;
-                                let has_snapshot = snapshot.is_some();
-                                if let Some(snapshot) = snapshot {
-                                    dashboard.state.set_snapshot(snapshot);
-                                    dashboard.has_cached_data = true;
-                                }
-                                if let Some(history) = history {
-                                    dashboard.state.set_history(history);
-                                }
-                                dashboard.connection = if has_snapshot {
-                                    ConnectionState::Connected
-                                } else {
-                                    ConnectionState::Error(
+                entity.update(cx, |dashboard, cx| {
+                    match result {
+                        ConnectResult::Connected {
+                            generation,
+                            inverters,
+                            snapshot,
+                            selected_serial: selected,
+                            refresh_token,
+                            history,
+                        } => {
+                            if generation != dashboard.connect_generation {
+                                return;
+                            }
+                            dashboard.fetching = false;
+                            if !dashboard.history_is_manual {
+                                dashboard.history_date = chrono::Local::now().date_naive();
+                            }
+                            dashboard.selected_serial = selected.clone();
+                            dashboard.inverters = inverters;
+                            dashboard.refresh_token = refresh_token;
+                            let has_snapshot = snapshot.is_some();
+                            if let Some(snapshot) = snapshot {
+                                dashboard.state.set_snapshot(snapshot);
+                                dashboard.has_cached_data = true;
+                            }
+                            if let Some(history) = history {
+                                dashboard.state.set_history(history);
+                            }
+                            dashboard.connection = if has_snapshot {
+                                ConnectionState::Connected
+                            } else {
+                                ConnectionState::Error(
                                     "Account connected, but no live inverter data is available yet."
                                         .into(),
                                 )
-                                };
-                                dashboard.update_tray(cx);
-                                dashboard.next_refresh_in = Some(refresh_seconds);
-                                dashboard.activity = format!(
-                                    "Waiting for next refresh · next refresh in {refresh_seconds}s"
-                                );
-                                dashboard.refresh_seconds = refresh_seconds;
-                                if dashboard.polling {
-                                    if let Some((email, password)) = dashboard.credentials.clone() {
-                                        if let Some(serial) = selected.clone() {
-                                            dashboard.send_poll_command(
-                                                PollCommand::Reconfigure {
-                                                    base_url: dashboard
-                                                        .state
-                                                        .settings
-                                                        .api_base_url
-                                                        .clone(),
-                                                    email,
-                                                    password,
-                                                    serial,
-                                                    plant_id: dashboard
-                                                        .inverters
-                                                        .iter()
-                                                        .find(|i| {
-                                                            i.serial
-                                                                == selected
-                                                                    .as_deref()
-                                                                    .unwrap_or_default()
-                                                        })
-                                                        .and_then(|i| i.plant_id),
-                                                    refresh_token: dashboard.refresh_token.clone(),
-                                                    interval: refresh_seconds,
-                                                },
-                                                cx,
-                                            );
-                                        }
-                                    }
-                                } else {
-                                    if dashboard.selected_serial.is_some() {
-                                        dashboard.start_polling(cx);
-                                    }
-                                }
-                            }
-                            ConnectResult::PollStarted => {}
-                            ConnectResult::Progress { message } => {
-                                dashboard.activity = message;
-                            }
-                            ConnectResult::History(history) => {
-                                dashboard.apply_history(history);
-                            }
-                            ConnectResult::Snapshot {
-                                snapshot,
-                                refresh_token,
-                                history,
-                            } => {
-                                dashboard.state.set_snapshot(snapshot);
-                                dashboard.has_cached_data = true;
-                                let token_changed = refresh_token != dashboard.refresh_token;
-                                dashboard.refresh_token = refresh_token.clone();
-                                if let Some(history) = history {
-                                    dashboard.state.set_history(history);
-                                }
-                                if token_changed {
-                                    if let (Some((email, _)), Some(token)) =
-                                        (&dashboard.credentials, refresh_token.as_deref())
-                                    {
-                                        credentials::save_refresh_token_async(
-                                            email.clone(),
-                                            token.to_owned(),
+                            };
+                            dashboard.update_tray(cx);
+                            dashboard.next_refresh_in = Some(refresh_seconds);
+                            dashboard.activity = format!(
+                                "Waiting for next refresh · next refresh in {refresh_seconds}s"
+                            );
+                            dashboard.refresh_seconds = refresh_seconds;
+                            if dashboard.polling {
+                                if let Some((email, password)) = dashboard.credentials.clone() {
+                                    if let Some(serial) = selected.clone() {
+                                        dashboard.send_poll_command(
+                                            PollCommand::Reconfigure {
+                                                base_url: dashboard
+                                                    .state
+                                                    .settings
+                                                    .api_base_url
+                                                    .clone(),
+                                                email,
+                                                password,
+                                                serial,
+                                                plant_id: dashboard
+                                                    .inverters
+                                                    .iter()
+                                                    .find(|i| {
+                                                        i.serial
+                                                            == selected
+                                                                .as_deref()
+                                                                .unwrap_or_default()
+                                                    })
+                                                    .and_then(|i| i.plant_id),
+                                                refresh_token: dashboard.refresh_token.clone(),
+                                                interval: refresh_seconds,
+                                            },
+                                            cx,
                                         );
                                     }
                                 }
-                                dashboard.connection = ConnectionState::Connected;
-                                dashboard.fetching = false;
-                                dashboard.update_tray(cx);
-                                dashboard.next_refresh_in = Some(dashboard.refresh_seconds);
-                                dashboard.activity = "Waiting for next refresh".into();
-                            }
-                            ConnectResult::HistoryFailure { error, .. } => {
-                                dashboard.fetching = false;
-                                dashboard.activity = format!("History unavailable: {error}");
-                            }
-                            ConnectResult::Failure {
-                                generation: result_generation,
-                                error,
-                                ..
-                            } => {
-                                if result_generation != dashboard.connect_generation {
-                                    return;
+                            } else {
+                                if dashboard.selected_serial.is_some() {
+                                    dashboard.start_polling(cx);
                                 }
-                                let failure_activity = format!("Login failed: {error}");
-                                dashboard.connection = ConnectionState::Error(error);
-                                dashboard.inverters.clear();
-                                dashboard.next_refresh_in = None;
-                                dashboard.activity = failure_activity;
-                                dashboard.fetching = false;
-                            }
-                            ConnectResult::Stopped { error } => {
-                                dashboard.apply_stopped(error, cx);
                             }
                         }
-                        cx.notify();
-                    })
-                    .ok();
+                        ConnectResult::PollStarted => {}
+                        ConnectResult::Progress { message } => {
+                            dashboard.activity = message;
+                        }
+                        ConnectResult::History(history) => {
+                            dashboard.apply_history(history);
+                        }
+                        ConnectResult::Snapshot {
+                            snapshot,
+                            refresh_token,
+                            history,
+                        } => {
+                            dashboard.state.set_snapshot(snapshot);
+                            dashboard.has_cached_data = true;
+                            let token_changed = refresh_token != dashboard.refresh_token;
+                            dashboard.refresh_token = refresh_token.clone();
+                            if let Some(history) = history {
+                                dashboard.state.set_history(history);
+                            }
+                            if token_changed {
+                                if let (Some((email, _)), Some(token)) =
+                                    (&dashboard.credentials, refresh_token.as_deref())
+                                {
+                                    credentials::save_refresh_token_async(
+                                        email.clone(),
+                                        token.to_owned(),
+                                    );
+                                }
+                            }
+                            dashboard.connection = ConnectionState::Connected;
+                            dashboard.fetching = false;
+                            dashboard.update_tray(cx);
+                            dashboard.next_refresh_in = Some(dashboard.refresh_seconds);
+                            dashboard.activity = "Waiting for next refresh".into();
+                        }
+                        ConnectResult::HistoryFailure { error, .. } => {
+                            dashboard.fetching = false;
+                            dashboard.activity = format!("History unavailable: {error}");
+                        }
+                        ConnectResult::Failure {
+                            generation: result_generation,
+                            error,
+                            ..
+                        } => {
+                            if result_generation != dashboard.connect_generation {
+                                return;
+                            }
+                            let failure_activity = format!("Login failed: {error}");
+                            dashboard.connection = ConnectionState::Error(error);
+                            dashboard.inverters.clear();
+                            dashboard.next_refresh_in = None;
+                            dashboard.activity = failure_activity;
+                            dashboard.fetching = false;
+                        }
+                        ConnectResult::Stopped { error } => {
+                            dashboard.apply_stopped(error, cx);
+                        }
+                    }
+                    cx.notify();
+                });
             }
         })
         .detach();

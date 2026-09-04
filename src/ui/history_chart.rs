@@ -3,13 +3,13 @@ use crate::{
     domain::HistorySeries,
     ui::format::{format_power, history_colors, history_label, history_value, series_color_index},
 };
-use gpui::prelude::FluentBuilder;
-use gpui::*;
-use gpui_component::plot::scale::{Scale, ScaleLinear, ScalePoint};
-use gpui_component::plot::shape::Line;
-use gpui_component::plot::{AxisText, Grid, Plot, PlotAxis, StrokeStyle};
-use gpui_component::{ActiveTheme, PixelsExt, StyledExt, Theme};
 use gpui_component_macros::IntoPlot;
+use gpui_kit::component::plot::scale::{Scale, ScaleLinear, ScalePoint};
+use gpui_kit::component::plot::shape::Line;
+use gpui_kit::component::plot::{AxisText, Grid, Plot, PlotAxis, StrokeStyle};
+use gpui_kit::component::{ActiveTheme, StyledExt, Theme};
+use gpui_kit::prelude::FluentBuilder;
+use gpui_kit::*;
 use std::{
     collections::HashSet,
     sync::{Arc, Mutex},
@@ -36,7 +36,7 @@ impl Plot for HistoryPlot {
             return;
         }
         let width = bounds.size.width.as_f32();
-        let height = bounds.size.height.as_f32() - gpui_component::plot::AXIS_GAP;
+        let height = bounds.size.height.as_f32() - gpui_kit::component::plot::AXIS_GAP;
         let plot_bounds = Bounds::new(
             point(bounds.origin.x + px(PLOT_LEFT), bounds.origin.y),
             size(px(width - PLOT_LEFT), bounds.size.height),
@@ -86,7 +86,7 @@ impl Plot for HistoryPlot {
         PlotAxis::new()
             .x(height)
             .x_label(x_labels)
-            .hide_x_axis()
+            .x_axis(false)
             .y(PLOT_LEFT - 8.)
             .y_label(y_labels)
             .stroke(cx.theme().border)
@@ -194,7 +194,7 @@ pub(crate) fn hover_layer(
     hovered: Option<usize>,
 ) -> impl IntoElement {
     let (min_value, max_value) = power_bounds(power);
-    let chart_height = HEIGHT - gpui_component::plot::AXIS_GAP;
+    let chart_height = HEIGHT - gpui_kit::component::plot::AXIS_GAP;
     let mut layer = div()
         .absolute()
         .top_0()
@@ -302,7 +302,7 @@ pub(crate) fn hover_layer(
                 );
             cell = cell
                 .when(true, |element| {
-                    element.bg(gpui::transparent_white().opacity(0.03))
+                    element.bg(gpui_kit::transparent_white().opacity(0.03))
                 })
                 .child(
                     div()

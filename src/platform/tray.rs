@@ -1,4 +1,4 @@
-use gpui::{actions, App, Global, MenuItem};
+use gpui_kit::{actions, App, Global, MenuItem};
 use gpui_tray::{Icon, Tray};
 
 actions!(suntray_tray, [OpenDashboard, Quit]);
@@ -99,7 +99,7 @@ fn icon_for(value: Option<&str>, cx: &App, _symbol: &str) -> Icon {
     let svg = format!(
         r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="18" viewBox="0 0 24 18">{body}</svg>"#
     );
-    let image = gpui::Image::from_bytes(gpui::ImageFormat::Svg, svg.into_bytes());
+    let image = gpui_kit::Image::from_bytes(gpui_kit::ImageFormat::Svg, svg.into_bytes());
     Icon::from_gpui(&image, cx).expect("valid tray SVG")
 }
 
