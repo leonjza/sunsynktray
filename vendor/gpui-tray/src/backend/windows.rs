@@ -480,7 +480,9 @@ fn native_icon(icon: &Icon) -> Result<HICON> {
     let color_bitmap = unsafe { CreateDIBSection(None, &info, DIB_RGB_COLORS, &mut bits, None, 0) }
         .map_err(Error::native)?;
     if bits.is_null() {
-        unsafe { DeleteObject(color_bitmap.into()) };
+        unsafe {
+            let _ = DeleteObject(color_bitmap.into());
+        }
         return Err(Error::native_message("Windows returned a null DIB buffer"));
     }
     // SAFETY: The DIB buffer has exactly `bgra.len()` bytes by construction.
@@ -488,7 +490,9 @@ fn native_icon(icon: &Icon) -> Result<HICON> {
     // A zeroed monochrome mask lets the color bitmap alpha control transparency.
     let mask_bitmap = unsafe { CreateBitmap(width, height, 1, 1, None) };
     if mask_bitmap.is_invalid() {
-        unsafe { DeleteObject(color_bitmap.into()) };
+        unsafe {
+            let _ = DeleteObject(color_bitmap.into());
+        }
         return Err(Error::native_message("could not create Windows icon mask"));
     }
     let icon_info = ICONINFO {
@@ -501,8 +505,8 @@ fn native_icon(icon: &Icon) -> Result<HICON> {
     // SAFETY: The bitmaps remain valid for the duration of icon creation.
     let result = unsafe { CreateIconIndirect(&icon_info) }.map_err(Error::native);
     unsafe {
-        DeleteObject(color_bitmap.into());
-        DeleteObject(mask_bitmap.into());
+        let _ = DeleteObject(color_bitmap.into());
+        let _ = DeleteObject(mask_bitmap.into());
     }
     result
 }

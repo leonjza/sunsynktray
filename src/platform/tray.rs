@@ -1,3 +1,5 @@
+#[cfg(target_os = "windows")]
+use super::windows_tray_icon;
 use gpui_kit::{actions, App, Global, MenuItem};
 use gpui_tray::{Icon, Tray};
 

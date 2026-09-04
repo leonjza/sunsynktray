@@ -63,7 +63,7 @@ pub(crate) fn render(value: Option<&str>, symbol: &str) -> Result<Icon, String> 
             0,
             0,
             0,
-            FW_SEMIBOLD.0,
+            FW_SEMIBOLD.0 as i32,
             0,
             0,
             0,
@@ -71,7 +71,7 @@ pub(crate) fn render(value: Option<&str>, symbol: &str) -> Result<Icon, String> 
             OUT_DEFAULT_PRECIS,
             CLIP_DEFAULT_PRECIS,
             CLEARTYPE_QUALITY,
-            DEFAULT_PITCH.0 | FF_DONTCARE.0,
+            DEFAULT_PITCH.0 as u32 | FF_DONTCARE.0 as u32,
             w!("Segoe UI"),
         )
     };
