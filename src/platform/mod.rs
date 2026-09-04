@@ -8,7 +8,7 @@ pub(crate) fn hide_main_window(window: &gpui_kit::Window) {
         UI::WindowsAndMessaging::{ShowWindow, SW_HIDE},
     };
 
-    let Ok(handle) = window.window_handle() else {
+    let Ok(handle) = HasWindowHandle::window_handle(window) else {
         tracing::warn!("could not obtain the Windows window handle");
         return;
     };
