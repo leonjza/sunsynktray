@@ -32,6 +32,8 @@ jobs:
       - name: Build release binary
         run: cargo build --release --target x86_64-pc-windows-msvc
         shell: pwsh
+        env:
+          RUSTFLAGS: -C target-feature=+crt-static
 
       - name: Install cargo-packager
         run: cargo install cargo-packager --locked
@@ -40,6 +42,8 @@ jobs:
       - name: Build NSIS installer
         run: cargo packager --release --target x86_64-pc-windows-msvc
         shell: pwsh
+        env:
+          RUSTFLAGS: -C target-feature=+crt-static
 
       - name: Package portable ZIP
         run: |
