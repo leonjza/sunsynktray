@@ -10,7 +10,7 @@ pub(crate) fn install(cx: &mut App) {
     cx.on_action(open_dashboard);
     cx.on_action(quit);
     match Tray::builder()
-        .icon(icon_for(None, cx))
+        .icon(icon_for(None, cx, "bolt.fill"))
         .macos_system_symbol("bolt.fill")
         .tooltip("SunTray")
         .menu(|_| {
@@ -35,7 +35,7 @@ pub(crate) fn update(cx: &mut App, value: Option<&str>, symbol: &str, tooltip: &
             // AppKit renders status-item titles with the native menu-bar font.
             // Rasterizing the number into an NSImage makes it blurry and gives
             // it the wrong metrics, especially on Retina displays.
-            let icon = value.is_none().then(|| icon_for(None, cx));
+            let icon = value.is_none().then(|| icon_for(None, cx, symbol));
             if let Err(error) = tray.set_macos_system_symbol(Some(symbol), cx) {
                 tracing::error!("failed to update macOS tray symbol: {error}");
             }
@@ -51,7 +51,7 @@ pub(crate) fn update(cx: &mut App, value: Option<&str>, symbol: &str, tooltip: &
         }
         #[cfg(not(target_os = "macos"))]
         {
-            if let Err(error) = tray.set_icon(Some(icon_for(value, cx)), cx) {
+            if let Err(error) = tray.set_icon(Some(icon_for(value, cx, symbol)), cx) {
                 tracing::error!("failed to update tray icon: {error}");
             }
             if let Err(error) = tray.set_tooltip(Some(tooltip.to_owned()), cx) {
@@ -81,7 +81,8 @@ fn quit(_: &Quit, cx: &mut App) {
     cx.quit();
 }
 
-fn icon_for(value: Option<&str>, cx: &App) -> Icon {
+#[cfg(not(target_os = "windows"))]
+fn icon_for(value: Option<&str>, cx: &App, _symbol: &str) -> Icon {
     #[cfg(target_os = "macos")]
     const FONT_FAMILY: &str = ".SF Compact";
     #[cfg(target_os = "windows")]
@@ -100,4 +101,12 @@ fn icon_for(value: Option<&str>, cx: &App) -> Icon {
     );
     let image = gpui::Image::from_bytes(gpui::ImageFormat::Svg, svg.into_bytes());
     Icon::from_gpui(&image, cx).expect("valid tray SVG")
+}
+
+#[cfg(target_os = "windows")]
+fn icon_for(value: Option<&str>, _cx: &App, symbol: &str) -> Icon {
+    windows_tray_icon::render(value, symbol).unwrap_or_else(|error| {
+        tracing::warn!(%error, "could not render Windows tray icon");
+        windows_tray_icon::fallback()
+    })
 }

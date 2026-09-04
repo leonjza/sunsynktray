@@ -140,6 +140,14 @@ pub(crate) enum ConnectionState {
 }
 
 fn tray_power(watts: f64) -> String {
+    #[cfg(target_os = "windows")]
+    if watts.abs() >= 1000. {
+        format!("{:.1} kW", watts / 1000.)
+    } else {
+        format!("{watts:.0} W")
+    }
+
+    #[cfg(not(target_os = "windows"))]
     if watts.abs() >= 1000. {
         format!("{:.1}", watts / 1000.)
     } else {

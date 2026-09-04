@@ -2,6 +2,10 @@ use std::{collections::HashMap, mem::size_of, sync::OnceLock};
 use windows::{
     Win32::{
         Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM},
+        Graphics::Gdi::{
+            BITMAPINFO, BITMAPINFOHEADER, BI_RGB, CreateBitmap, CreateDIBSection, DIB_RGB_COLORS,
+            DeleteObject,
+        },
         System::LibraryLoader::GetModuleHandleW,
         UI::{
             Shell::{
@@ -9,7 +13,7 @@ use windows::{
                 NIM_MODIFY, NIS_HIDDEN, NOTIFYICONDATAW, Shell_NotifyIconW,
             },
             WindowsAndMessaging::{
-                AppendMenuW, CREATESTRUCTW, CreateIcon, CreatePopupMenu, CreateWindowExW,
+                AppendMenuW, CREATESTRUCTW, CreateIconIndirect, CreatePopupMenu, CreateWindowExW,
                 DefWindowProcW, DestroyIcon, DestroyMenu, DestroyWindow, GWLP_USERDATA,
                 GetCursorPos, HICON, HMENU, MF_CHECKED, MF_GRAYED, MF_POPUP, MF_SEPARATOR,
                 MF_STRING, RegisterClassW, RegisterWindowMessageW, SetForegroundWindow,
@@ -453,22 +457,51 @@ fn native_icon(icon: &Icon) -> Result<HICON> {
         .map_err(|_| Error::InvalidIcon("width exceeds i32::MAX".into()))?;
     let height = i32::try_from(icon.height())
         .map_err(|_| Error::InvalidIcon("height exceeds i32::MAX".into()))?;
-    let row_bytes = usize::try_from(icon.width())
-        .ok()
-        .and_then(|width| width.checked_mul(4))
-        .ok_or_else(|| Error::InvalidIcon("row byte count overflow".into()))?;
-    let mut xor = Vec::with_capacity(icon.rgba().len());
-    for row in icon.rgba().chunks_exact(row_bytes).rev() {
-        for rgba in row.chunks_exact(4) {
-            xor.extend_from_slice(&[rgba[2], rgba[1], rgba[0], rgba[3]]);
-        }
+    let mut bgra = Vec::with_capacity(icon.rgba().len());
+    for rgba in icon.rgba().chunks_exact(4) {
+        bgra.extend_from_slice(&[rgba[2], rgba[1], rgba[0], rgba[3]]);
     }
-    let mask_stride = usize::try_from(icon.width().div_ceil(32))
-        .unwrap_or(usize::MAX)
-        .saturating_mul(4);
-    let and_mask = vec![0_u8; mask_stride.saturating_mul(icon.height() as usize)];
-    // SAFETY: Both bit buffers cover the requested dimensions. The 32-bit XOR
-    // bitmap is bottom-up BGRA and its alpha channel supplies transparency.
-    unsafe { CreateIcon(None, width, height, 1, 32, and_mask.as_ptr(), xor.as_ptr()) }
-        .map_err(Error::native)
+    let info = BITMAPINFO {
+        bmiHeader: BITMAPINFOHEADER {
+            biSize: size_of::<BITMAPINFOHEADER>() as u32,
+            biWidth: width,
+            biHeight: -height,
+            biPlanes: 1,
+            biBitCount: 32,
+            biCompression: BI_RGB.0,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let mut bits = std::ptr::null_mut();
+    // SAFETY: `info` describes a valid top-down 32-bit DIB and `bits` is
+    // written by Windows to the allocated pixel buffer.
+    let color_bitmap = unsafe { CreateDIBSection(None, &info, DIB_RGB_COLORS, &mut bits, None, 0) }
+        .map_err(Error::native)?;
+    if bits.is_null() {
+        unsafe { DeleteObject(color_bitmap.into()) };
+        return Err(Error::native_message("Windows returned a null DIB buffer"));
+    }
+    // SAFETY: The DIB buffer has exactly `bgra.len()` bytes by construction.
+    unsafe { std::ptr::copy_nonoverlapping(bgra.as_ptr(), bits.cast(), bgra.len()) };
+    // A zeroed monochrome mask lets the color bitmap alpha control transparency.
+    let mask_bitmap = unsafe { CreateBitmap(width, height, 1, 1, None) };
+    if mask_bitmap.is_invalid() {
+        unsafe { DeleteObject(color_bitmap.into()) };
+        return Err(Error::native_message("could not create Windows icon mask"));
+    }
+    let icon_info = ICONINFO {
+        fIcon: true.into(),
+        xHotspot: 0,
+        yHotspot: 0,
+        hbmMask: mask_bitmap,
+        hbmColor: color_bitmap,
+    };
+    // SAFETY: The bitmaps remain valid for the duration of icon creation.
+    let result = unsafe { CreateIconIndirect(&icon_info) }.map_err(Error::native);
+    unsafe {
+        DeleteObject(color_bitmap.into());
+        DeleteObject(mask_bitmap.into());
+    }
+    result
 }
