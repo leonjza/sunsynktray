@@ -15,8 +15,9 @@ use windows::{
             WindowsAndMessaging::{
                 AppendMenuW, CREATESTRUCTW, CreateIconIndirect, CreatePopupMenu, CreateWindowExW,
                 DefWindowProcW, DestroyIcon, DestroyMenu, DestroyWindow, GWLP_USERDATA,
-                GetCursorPos, HICON, HMENU, MF_CHECKED, MF_GRAYED, MF_POPUP, MF_SEPARATOR,
-                MF_STRING, RegisterClassW, RegisterWindowMessageW, SetForegroundWindow,
+                GetCursorPos, HICON, HMENU, ICONINFO, MF_CHECKED, MF_GRAYED, MF_POPUP,
+                MF_SEPARATOR, MF_STRING, RegisterClassW, RegisterWindowMessageW,
+                SetForegroundWindow,
                 SetWindowLongPtrW, TPM_LEFTALIGN, TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu,
                 WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_CONTEXTMENU, WM_CREATE, WM_LBUTTONUP,
                 WM_NCCREATE, WM_NCDESTROY, WM_RBUTTONUP, WNDCLASSW,

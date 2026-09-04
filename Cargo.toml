@@ -36,6 +36,7 @@ identifier = "com.suntray.app"
 publisher = "SunTray"
 formats = ["default"]
 out-dir = "./dist"
+icons = ["assets/icons/sunsynk-app-icon.png"]
 
 [[package.metadata.packager.binaries]]
 path = "suntray"
