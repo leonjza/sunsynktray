@@ -1,6 +1,9 @@
 use gpui_kit::{actions, App, Global, MenuItem};
 use gpui_tray::{Icon, Tray};
 
+#[cfg(not(target_os = "macos"))]
+use gpui_kit::BorrowAppContext;
+
 actions!(suntray_tray, [OpenDashboard, Quit]);
 
 pub(crate) struct TrayState {
