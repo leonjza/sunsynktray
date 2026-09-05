@@ -1,3 +1,4 @@
+use gpui_kit::{App, Image, ImageFormat};
 use gpui_tray::Icon;
 use windows::{
     core::w,
@@ -14,9 +15,9 @@ use windows::{
     },
 };
 
-pub(crate) fn render(value: Option<&str>, symbol: &str) -> Result<Icon, String> {
+pub(crate) fn render(value: Option<&str>, symbol: &str, cx: &App) -> Result<Icon, String> {
     let Some(value) = value else {
-        return Ok(fallback());
+        return logo(cx).or_else(|_| Ok(fallback()));
     };
     let size = icon_size();
     let text = compact_value(value);
@@ -87,6 +88,11 @@ fn render_mask(size: i32, text: &str, dx: i32, dy: i32) -> Result<Vec<u8>, Strin
     }
     let old_bitmap = unsafe { SelectObject(dc, bitmap.into()) };
     let font_size = ((size as f32) * 0.62).round().max(8.0) as i32;
+    let quality = if size <= 16 {
+        windows::Win32::Graphics::Gdi::NONANTIALIASED_QUALITY
+    } else {
+        ANTIALIASED_QUALITY
+    };
     let font = unsafe {
         CreateFontW(
             -font_size,
@@ -100,7 +106,7 @@ fn render_mask(size: i32, text: &str, dx: i32, dy: i32) -> Result<Vec<u8>, Strin
             DEFAULT_CHARSET,
             OUT_DEFAULT_PRECIS,
             CLIP_DEFAULT_PRECIS,
-            ANTIALIASED_QUALITY,
+            quality,
             DEFAULT_PITCH.0 as u32 | FF_DONTCARE.0 as u32,
             w!("Segoe UI Semibold"),
         )
@@ -183,4 +189,12 @@ pub(crate) fn fallback() -> Icon {
         }
     }
     Icon::from_rgba(rgba, size as u32, size as u32).expect("valid fallback icon")
+}
+
+fn logo(cx: &App) -> Result<Icon, String> {
+    let image = Image::from_bytes(
+        ImageFormat::Png,
+        include_bytes!("../../assets/icons/sunsynk-app-icon@2x.png").to_vec(),
+    );
+    Icon::from_gpui(&image, cx).map_err(|error| error.to_string())
 }

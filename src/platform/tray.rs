@@ -166,8 +166,8 @@ fn icon_for(value: Option<&str>, cx: &App, symbol: &str) -> Icon {
 }
 
 #[cfg(target_os = "windows")]
-fn icon_for(value: Option<&str>, _cx: &App, symbol: &str) -> Icon {
-    windows_tray_icon::render(value, symbol).unwrap_or_else(|error| {
+fn icon_for(value: Option<&str>, cx: &App, symbol: &str) -> Icon {
+    windows_tray_icon::render(value, symbol, cx).unwrap_or_else(|error| {
         tracing::warn!(%error, "could not render Windows tray icon");
         windows_tray_icon::fallback()
     })
