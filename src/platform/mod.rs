@@ -65,3 +65,6 @@ pub(crate) fn show_main_window(window: &gpui_kit::Window) {
         let _ = ShowWindow(hwnd, SW_SHOW);
     }
 }
+
+#[cfg(target_os = "windows")]
+mod windows_tray_icon;

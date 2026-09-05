@@ -4,6 +4,9 @@ use gpui_tray::{Icon, Tray};
 #[cfg(not(target_os = "macos"))]
 use gpui_kit::BorrowAppContext;
 
+#[cfg(target_os = "windows")]
+use super::windows_tray_icon;
+
 actions!(suntray_tray, [OpenDashboard, Quit]);
 
 pub(crate) struct TrayState {
@@ -120,6 +123,7 @@ fn quit(_: &Quit, cx: &mut App) {
     cx.quit();
 }
 
+#[cfg(not(target_os = "windows"))]
 fn icon_for(value: Option<&str>, cx: &App, symbol: &str) -> Icon {
     #[cfg(target_os = "macos")]
     const FONT_FAMILY: &str = ".SF Compact";
@@ -158,6 +162,14 @@ fn icon_for(value: Option<&str>, cx: &App, symbol: &str) -> Icon {
     Icon::from_gpui(&image, cx).unwrap_or_else(|error| {
         tracing::warn!(%error, "could not render tray SVG");
         fallback_icon()
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn icon_for(value: Option<&str>, _cx: &App, symbol: &str) -> Icon {
+    windows_tray_icon::render(value, symbol).unwrap_or_else(|error| {
+        tracing::warn!(%error, "could not render Windows tray icon");
+        windows_tray_icon::fallback()
     })
 }
 
