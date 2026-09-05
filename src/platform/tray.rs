@@ -75,7 +75,11 @@ fn open_dashboard(_: &OpenDashboard, cx: &mut App) {
         }
     }
     for window in cx.windows() {
-        let _ = window.update(cx, |_, window, _| window.activate_window());
+        let _ = window.update(cx, |_, window, _| {
+            #[cfg(target_os = "windows")]
+            crate::platform::show_main_window(window);
+            window.activate_window();
+        });
     }
 }
 

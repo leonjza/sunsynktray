@@ -24,6 +24,10 @@ fn main() -> Result<()> {
     if args.iter().any(|arg| arg == "--inspect-api") {
         return diagnostics::run(&args, settings);
     }
+    let Some(_instance_lock) = platform::InstanceLock::acquire()? else {
+        tracing::info!("another SunTray instance is already running");
+        return Ok(());
+    };
     gpui_kit::application()
         .with_assets(assets::Assets)
         .run(move |cx| {
