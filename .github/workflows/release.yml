@@ -21,6 +21,9 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+
       - name: Set release version
         run: bash packaging/set-version.sh "${GITHUB_REF_NAME#v}"
         shell: bash
@@ -36,8 +39,9 @@ jobs:
           RUSTFLAGS: -C target-feature=+crt-static
 
       - name: Install cargo-packager
-        run: cargo install cargo-packager --locked
-        shell: pwsh
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-packager
 
       - name: Build NSIS installer
         run: cargo packager --release --target x86_64-pc-windows-msvc
@@ -77,12 +81,17 @@ jobs:
         with:
           targets: aarch64-apple-darwin
 
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+
       - name: Set release version
         run: bash packaging/set-version.sh "${GITHUB_REF_NAME#v}"
         shell: bash
 
       - name: Install cargo-packager
-        run: cargo install cargo-packager --locked
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-packager
 
       - name: Build release binary
         run: cargo build --release --target aarch64-apple-darwin
