@@ -37,6 +37,9 @@ raw-window-handle = "0.6"
 objc2 = { version = "0.6.4", features = ["std"] }
 objc2-app-kit = { version = "0.3.2", features = ["NSApplication", "NSRunningApplication"] }
 
+[target.'cfg(target_os = "windows")'.build-dependencies]
+embed-resource = "3.0.11"
+
 [package.metadata.packager]
 product-name = "SunTray"
 identifier = "com.suntray.app"
@@ -58,6 +61,7 @@ info-plist-path = "packaging/macos/Info.plist"
 installer-mode = "currentUser"
 compression = "lzma"
 appdata-paths = ["$LOCALAPPDATA/$PUBLISHER/$PRODUCTNAME"]
+installer-icon = "assets/icons/sunsynk.ico"
 
 [profile.release]
 lto = true

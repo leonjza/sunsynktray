@@ -6808,6 +6808,7 @@ dependencies = [
  "anyhow",
  "base64",
  "chrono",
+ "embed-resource",
  "fs2",
  "gpui-component-macros",
  "gpui-kit",
