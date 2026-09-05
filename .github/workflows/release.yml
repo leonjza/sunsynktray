@@ -157,11 +157,24 @@ jobs:
       - name: Build release binary
         run: cargo build --release --target aarch64-apple-darwin
 
-      - name: Build macOS DMG
-        run: cargo packager --release --target aarch64-apple-darwin
+      - name: Build macOS app bundle
+        run: cargo packager --release --target aarch64-apple-darwin --formats app
+
+      - name: Sign macOS app bundle
+        run: codesign --force --deep --sign leonjza --timestamp=none dist/SunTray.app
 
       - name: Verify macOS signature
         run: codesign --verify --deep --strict --verbose=2 dist/SunTray.app
+
+      - name: Build macOS DMG
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          hdiutil create \
+            -volname SunTray \
+            -srcfolder dist/SunTray.app \
+            -ov \
+            -format UDZO \
+            "dist/SunTray_${version}_aarch64.dmg"
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4

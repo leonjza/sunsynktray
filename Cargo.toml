@@ -49,7 +49,6 @@ main = true
 background-app = true
 minimum-system-version = "13.0"
 info-plist-path = "packaging/macos/Info.plist"
-signing-identity = "leonjza"
 
 [package.metadata.packager.nsis]
 installer-mode = "currentUser"
