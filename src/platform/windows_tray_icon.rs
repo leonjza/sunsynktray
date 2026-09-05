@@ -171,7 +171,7 @@ fn compact_value(value: &str) -> String {
         .replace(" W", "")
 }
 
-fn fallback() -> Icon {
+pub(crate) fn fallback() -> Icon {
     let size = 16;
     let mut rgba = vec![0; size * size * 4];
     for y in 2..14 {
