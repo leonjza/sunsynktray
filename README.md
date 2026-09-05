@@ -14,7 +14,7 @@ Install it once with:
 cargo install cargo-packager --locked
 ```
 
-Build the release binary for the target platform, then run `cargo packager --release`. macOS produces the application bundle and DMG; Windows produces a current-user NSIS installer. The release workflow also publishes a portable Windows ZIP.
+Build the release binary for the target platform, then run `cargo packager --release`. macOS produces the application bundle; the release workflow wraps it in a native `.pkg` installer. Windows produces a current-user NSIS installer, and the release workflow also publishes a portable Windows ZIP.
 
 ## Core dependency notes
 

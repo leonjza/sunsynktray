@@ -32,6 +32,7 @@ fn main() -> Result<()> {
         .with_assets(assets::Assets)
         .run(move |cx| {
             gpui_kit::init(cx);
+            platform::configure_application_policy();
             gpui_kit::component::Theme::sync_system_appearance(None, cx);
             platform::tray::install(cx);
             let state = app::MonitorState::new(settings.clone());

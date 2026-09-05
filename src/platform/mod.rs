@@ -1,5 +1,24 @@
 pub(crate) mod tray;
 
+#[cfg(target_os = "macos")]
+pub(crate) fn configure_application_policy() {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
+
+    let Some(mtm) = MainThreadMarker::new() else {
+        tracing::warn!("could not obtain the macOS main-thread marker");
+        return;
+    };
+
+    let app = NSApplication::sharedApplication(mtm);
+    if !app.setActivationPolicy(NSApplicationActivationPolicy::Accessory) {
+        tracing::warn!("could not set macOS application activation policy to accessory");
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn configure_application_policy() {}
+
 mod instance;
 pub(crate) use instance::InstanceLock;
 

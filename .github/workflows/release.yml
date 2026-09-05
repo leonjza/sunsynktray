@@ -87,14 +87,27 @@ jobs:
       - name: Build release binary
         run: cargo build --release --target aarch64-apple-darwin
 
-      - name: Build macOS DMG
-        run: cargo packager --release --target aarch64-apple-darwin
+      - name: Build macOS app bundle
+        run: cargo packager --release --target aarch64-apple-darwin --formats app
+
+      - name: Ad-hoc sign macOS app bundle
+        run: codesign --force --deep --sign - --timestamp=none dist/SunTray.app
+
+      - name: Build macOS PKG installer
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          pkgbuild \
+            --component dist/SunTray.app \
+            --identifier com.suntray.app \
+            --version "$version" \
+            --install-location /Applications \
+            "dist/SunTray-${version}-macos-arm64.pkg"
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
           name: SunTray-macos-arm64-${{ github.ref_name }}
-          path: dist/*.dmg
+          path: dist/*.pkg
           if-no-files-found: error
 
   release:
@@ -116,6 +129,6 @@ jobs:
           files: |
             dist/SunTray-${{ github.ref_name }}-windows-x64-portable.zip
             dist/*-setup.exe
-            dist/*.dmg
+            dist/*.pkg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
