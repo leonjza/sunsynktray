@@ -227,7 +227,7 @@ fn metric_color(value: Option<&str>, symbol: &str) -> &'static str {
 #[cfg(target_os = "windows")]
 fn bolt_path(width: i32) -> &'static str {
     if width <= 16 {
-        r#"<path d="M13 1 6 8h4l-4 7 9-8h-4z" fill="white"/>"
+        r#"<path d="M13 1 6 8h4l-4 7 9-8h-4z" fill="white"/>"#
     } else {
         r#"<path d="M26 2 12 16h8l-8 14 18-16h-8z" fill="white"/>"#
     }

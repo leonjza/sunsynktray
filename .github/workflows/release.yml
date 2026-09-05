@@ -32,6 +32,10 @@ jobs:
         run: choco install -y nsis
         shell: pwsh
 
+      - name: Check Windows build
+        run: cargo check --target x86_64-pc-windows-msvc
+        shell: pwsh
+
       - name: Build release binary
         run: cargo build --release --target x86_64-pc-windows-msvc
         shell: pwsh
