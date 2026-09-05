@@ -134,7 +134,7 @@ jobs:
             -in "$certificate_dir/suntray.csr" \
             -signkey "$certificate_dir/suntray.key" \
             -out "$certificate_dir/suntray.crt" \
-            -extfile <(printf 'extendedKeyUsage=codeSigning\\nkeyUsage=digitalSignature')
+            -extfile <(printf 'extendedKeyUsage=codeSigning\nkeyUsage=digitalSignature')
           openssl pkcs12 -export \
             -out "$certificate_dir/suntray.p12" \
             -inkey "$certificate_dir/suntray.key" \
@@ -160,7 +160,7 @@ jobs:
       - name: Build macOS DMG
         run: cargo packager --release --target aarch64-apple-darwin
 
-      - name: Verify macOS ad-hoc signature
+      - name: Verify macOS signature
         run: codesign --verify --deep --strict --verbose=2 dist/SunTray.app
 
       - name: Upload macOS artifacts
