@@ -124,56 +124,35 @@ fn icon_for(value: Option<&str>, cx: &App, symbol: &str) -> Icon {
     #[cfg(target_os = "macos")]
     const FONT_FAMILY: &str = ".SF Compact";
     #[cfg(target_os = "windows")]
-    const FONT_FAMILY: &str = "Segoe UI";
+    const FONT_FAMILY: &str = "Segoe UI Semibold";
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     const FONT_FAMILY: &str = "Noto Sans";
 
     #[cfg(target_os = "windows")]
-    const WIDTH: i32 = 32;
-    #[cfg(target_os = "windows")]
-    const HEIGHT: i32 = 32;
-    #[cfg(target_os = "windows")]
-    const BASE_FONT_SIZE: f32 = 19.0;
-    #[cfg(target_os = "windows")]
-    const TEXT_X: i32 = 16;
-    #[cfg(target_os = "windows")]
-    const TEXT_Y: f32 = 17.0;
+    let (width, height, base_font_size, text_x, text_y) = windows_tray_layout();
     #[cfg(not(target_os = "windows"))]
-    const WIDTH: i32 = 24;
-    #[cfg(not(target_os = "windows"))]
-    const HEIGHT: i32 = 18;
-    #[cfg(not(target_os = "windows"))]
-    const BASE_FONT_SIZE: f32 = 11.0;
-    #[cfg(not(target_os = "windows"))]
-    const TEXT_X: i32 = 12;
-    #[cfg(not(target_os = "windows"))]
-    const TEXT_Y: f32 = 9.0;
+    let (width, height, base_font_size, text_x, text_y) = (24, 18, 11.0, 12, 9.0);
 
-    let color = match symbol {
-        "battery.100" => "#80DE4A",
-        "house.fill" => "#BFD42D",
-        "sun.max.fill" => "#42B9F5",
-        _ => "white",
-    };
+    let color = metric_color(value, symbol);
     let text_value = value.map(compact_value);
     let font_size = text_value
         .as_ref()
-        .map(|value| (BASE_FONT_SIZE * 3.0 / value.chars().count().max(3) as f32).max(7.0))
-        .unwrap_or(BASE_FONT_SIZE);
+        .map(|value| (base_font_size * 3.0 / value.chars().count().max(3) as f32).max(7.0))
+        .unwrap_or(base_font_size);
     #[cfg(target_os = "windows")]
     const STROKE_WIDTH: f32 = 1.5;
     #[cfg(not(target_os = "windows"))]
     const STROKE_WIDTH: f32 = 1.15;
     let body = match value {
         Some(_) => format!(
-            r##"<text x="{TEXT_X}" y="{TEXT_Y}" text-anchor="middle" dominant-baseline="middle" font-family="{FONT_FAMILY}" font-size="{font_size}" font-weight="600" fill="none" stroke="#101010" stroke-width="{STROKE_WIDTH}" stroke-linejoin="round">{}</text><text x="{TEXT_X}" y="{TEXT_Y}" text-anchor="middle" dominant-baseline="middle" font-family="{FONT_FAMILY}" font-size="{font_size}" font-weight="600" fill="{color}">{}</text>"##,
+            r##"<text x="{text_x}" y="{text_y}" text-anchor="middle" dominant-baseline="middle" font-family="{FONT_FAMILY}" font-size="{font_size}" font-weight="600" fill="none" stroke="#101010" stroke-width="{STROKE_WIDTH}" stroke-linejoin="round">{}</text><text x="{text_x}" y="{text_y}" text-anchor="middle" dominant-baseline="middle" font-family="{FONT_FAMILY}" font-size="{font_size}" font-weight="600" fill="{color}">{}</text>"##,
             escape_xml(text_value.as_deref().unwrap_or_default()),
             escape_xml(text_value.as_deref().unwrap_or_default())
         ),
-        None => bolt_path().into(),
+        None => bolt_path(width).into(),
     };
     let svg = format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{WIDTH}" height="{HEIGHT}" viewBox="0 0 {WIDTH} {HEIGHT}">{body}</svg>"#
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">{body}</svg>"#
     );
     let image = gpui_kit::Image::from_bytes(gpui_kit::ImageFormat::Svg, svg.into_bytes());
     Icon::from_gpui(&image, cx).unwrap_or_else(|error| {
@@ -183,7 +162,7 @@ fn icon_for(value: Option<&str>, cx: &App, symbol: &str) -> Icon {
 }
 
 fn fallback_icon() -> Icon {
-    let size = 32;
+    let size = 16;
     let mut rgba = vec![0; size * size * 4];
     for y in 4..28 {
         for x in 8..24 {
@@ -197,12 +176,65 @@ fn fallback_icon() -> Icon {
 }
 
 #[cfg(target_os = "windows")]
-fn bolt_path() -> &'static str {
-    r#"<path d="M26 2 12 16h8l-8 14 18-16h-8z" fill="white"/>"#
+fn windows_tray_layout() -> (i32, i32, f32, i32, f32) {
+    use windows::Win32::{
+        Graphics::Gdi::{GetDC, GetDeviceCaps, ReleaseDC, LOGPIXELSX},
+        UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSMICON},
+    };
+
+    let reference = unsafe { GetDC(None) };
+    if reference.is_invalid() {
+        return (16, 16, 10.0, 8, 8.0);
+    }
+    let dpi = unsafe { GetDeviceCaps(Some(reference), LOGPIXELSX).max(96) } as f32 / 96.0;
+    unsafe {
+        ReleaseDC(None, reference);
+    }
+    let size = ((unsafe { GetSystemMetrics(SM_CXSMICON).max(16) } as f32) * dpi).round() as i32;
+    (
+        size,
+        size,
+        (size as f32 * 0.62).max(8.0),
+        size / 2,
+        size as f32 / 2.0,
+    )
+}
+
+fn metric_color(value: Option<&str>, symbol: &str) -> &'static str {
+    if symbol == "battery.100" {
+        if let Some(soc) =
+            value.and_then(|value| value.trim().trim_end_matches('%').parse::<f64>().ok())
+        {
+            let soc = soc.clamp(0.0, 100.0);
+            return if soc >= 80.0 {
+                "#22C55E"
+            } else if soc >= 60.0 {
+                "#84CC16"
+            } else if soc >= 40.0 {
+                "#EAB308"
+            } else {
+                "#EF4444"
+            };
+        }
+    }
+    match symbol {
+        "house.fill" => "#BFD42D",
+        "sun.max.fill" => "#42B9F5",
+        _ => "white",
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn bolt_path(width: i32) -> &'static str {
+    if width <= 16 {
+        r#"<path d="M13 1 6 8h4l-4 7 9-8h-4z" fill="white"/>"
+    } else {
+        r#"<path d="M26 2 12 16h8l-8 14 18-16h-8z" fill="white"/>"#
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
-fn bolt_path() -> &'static str {
+fn bolt_path(_width: i32) -> &'static str {
     r#"<path d="M19 1 9 9h6l-5 8 14-10h-6z" fill="white"/>"#
 }
 
