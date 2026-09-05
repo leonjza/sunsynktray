@@ -21,6 +21,7 @@ fn main() -> Result<()> {
         .init();
     let settings = storage::config::Settings::from_env()?;
     let args = std::env::args().skip(1).collect::<Vec<_>>();
+    let startup = args.iter().any(|arg| arg == "--startup");
     if args.iter().any(|arg| arg == "--inspect-api") {
         return diagnostics::run(&args, settings);
     }
@@ -37,7 +38,7 @@ fn main() -> Result<()> {
             platform::tray::install(cx);
             let state = app::MonitorState::new(settings.clone());
             cx.set_global(app::MonitorStateGlobal(state.clone()));
-            app::open_main_window(cx, state);
+            app::open_main_window(cx, state, !startup);
         });
     Ok(())
 }

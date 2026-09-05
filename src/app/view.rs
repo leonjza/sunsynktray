@@ -76,6 +76,8 @@ impl Render for Dashboard {
                     selected: &self.selected_serial,
                     tray_metric: self.tray_metric,
                     fetching: self.fetching,
+                    startup_enabled: self.startup_enabled,
+                    startup_error: self.startup_error.clone(),
                     entity,
                 }),
             })

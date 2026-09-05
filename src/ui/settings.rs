@@ -23,6 +23,8 @@ pub(crate) fn render(view: SettingsView<'_>) -> AnyElement {
         selected,
         tray_metric,
         fetching,
+        startup_enabled,
+        startup_error,
         entity,
     } = view;
     div()
@@ -79,22 +81,42 @@ pub(crate) fn render(view: SettingsView<'_>) -> AnyElement {
                 ))
                 .child(
                     div()
-                        .h_flex()
-                        .items_center()
-                        .justify_between()
+                        .v_flex()
+                        .gap_1()
                         .child(
                             div()
-                                .v_flex()
-                                .gap_1()
-                                .child(div().text_sm().child("Launch at startup"))
+                                .h_flex()
+                                .items_center()
+                                .justify_between()
                                 .child(
                                     div()
-                                        .text_xs()
-                                        .text_color(theme.muted_foreground)
-                                        .child("Available in a future release."),
-                                ),
+                                        .v_flex()
+                                        .gap_1()
+                                        .child(div().text_sm().child("Launch at startup"))
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(theme.muted_foreground)
+                                                .child(
+                                                    "Start SunTray in the tray when you sign in.",
+                                                ),
+                                        ),
+                                )
+                                .child({
+                                    let entity = entity.clone();
+                                    Switch::new("launch-at-startup")
+                                        .checked(startup_enabled)
+                                        .small()
+                                        .on_click(move |enabled, _, cx| {
+                                            entity.update(cx, |dashboard, cx| {
+                                                dashboard.set_startup_enabled(*enabled, cx);
+                                            });
+                                        })
+                                }),
                         )
-                        .child(Switch::new("launch-at-startup").disabled(true).small()),
+                        .when_some(startup_error, |element, error| {
+                            element.child(div().text_xs().text_color(theme.danger).child(error))
+                        }),
                 ),
         ))
         .child(settings_section(
@@ -132,6 +154,8 @@ pub(crate) struct SettingsView<'a> {
     pub(crate) selected: &'a Option<String>,
     pub(crate) tray_metric: Option<TrayMetric>,
     pub(crate) fetching: bool,
+    pub(crate) startup_enabled: bool,
+    pub(crate) startup_error: Option<String>,
     pub(crate) entity: Entity<Dashboard>,
 }
 

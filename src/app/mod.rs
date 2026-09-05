@@ -46,6 +46,8 @@ pub(crate) struct Dashboard {
     has_cached_data: bool,
     status_bar: Entity<StatusBar>,
     chart_bounds: Arc<Mutex<Option<Bounds<Pixels>>>>,
+    startup_enabled: bool,
+    startup_error: Option<String>,
 }
 impl Dashboard {
     pub(crate) fn new(
@@ -145,6 +147,11 @@ impl Dashboard {
             has_cached_data,
             status_bar,
             chart_bounds: Arc::new(Mutex::new(None)),
+            startup_enabled: crate::platform::startup::is_enabled().unwrap_or_else(|error| {
+                tracing::warn!(%error, "could not read startup setting");
+                false
+            }),
+            startup_error: None,
         };
         if let Some((email, password)) = startup_credentials {
             let entity = cx.entity().clone();
@@ -157,6 +164,20 @@ impl Dashboard {
             .detach();
         }
         dashboard
+    }
+
+    pub(crate) fn set_startup_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        match crate::platform::startup::set_enabled(enabled) {
+            Ok(()) => {
+                self.startup_enabled = enabled;
+                self.startup_error = None;
+            }
+            Err(error) => {
+                self.startup_error = Some(error.to_string());
+                tracing::warn!(%error, "could not update startup setting");
+            }
+        }
+        cx.notify();
     }
     pub(crate) fn set_tray_metric(&mut self, metric: Option<TrayMetric>, cx: &mut Context<Self>) {
         self.tray_metric = metric;

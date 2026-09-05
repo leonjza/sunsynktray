@@ -107,7 +107,7 @@ fn open_dashboard(_: &OpenDashboard, cx: &mut App) {
             .try_global::<crate::app::MonitorStateGlobal>()
             .map(|state| state.0.clone())
         {
-            crate::app::open_main_window(cx, state);
+            crate::app::open_main_window(cx, state, true);
         }
     }
     for window in cx.windows() {

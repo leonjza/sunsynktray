@@ -16,9 +16,10 @@ impl InstanceLock {
     fn acquire_at(path: &PathBuf) -> Result<Option<Self>> {
         let file = OpenOptions::new()
             .create(true)
+            .truncate(false)
             .read(true)
             .write(true)
-            .open(&path)
+            .open(path)
             .with_context(|| format!("could not open instance lock {}", path.display()))?;
 
         match file.try_lock_exclusive() {
@@ -43,12 +44,11 @@ fn lock_path() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::InstanceLock;
-    use std::path::PathBuf;
 
     #[test]
     fn only_one_instance_can_hold_the_lock() {
-        let path = PathBuf::from(std::env::temp_dir())
-            .join(format!("SunTray.instance.test.{}.lock", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("SunTray.instance.test.{}.lock", std::process::id()));
         let first = InstanceLock::acquire_at(&path)
             .expect("first instance lock should be available")
             .expect("test should own the instance lock");

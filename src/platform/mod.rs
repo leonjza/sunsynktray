@@ -1,3 +1,4 @@
+pub(crate) mod startup;
 pub(crate) mod tray;
 
 #[cfg(target_os = "macos")]
