@@ -183,6 +183,7 @@ fn icon_for(value: Option<&str>, cx: &App, symbol: &str) -> Icon {
     })
 }
 
+#[cfg(not(target_os = "windows"))]
 fn fallback_icon() -> Icon {
     let size = 16;
     let mut rgba = vec![0; size * size * 4];
@@ -197,31 +198,7 @@ fn fallback_icon() -> Icon {
     Icon::from_rgba(rgba, size as u32, size as u32).expect("fallback tray icon is valid")
 }
 
-#[cfg(target_os = "windows")]
-fn windows_tray_layout() -> (i32, i32, f32, i32, f32) {
-    use windows::Win32::{
-        Graphics::Gdi::{GetDC, GetDeviceCaps, ReleaseDC, LOGPIXELSX},
-        UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSMICON},
-    };
-
-    let reference = unsafe { GetDC(None) };
-    if reference.is_invalid() {
-        return (16, 16, 10.0, 8, 8.0);
-    }
-    let dpi = unsafe { GetDeviceCaps(Some(reference), LOGPIXELSX).max(96) } as f32 / 96.0;
-    unsafe {
-        ReleaseDC(None, reference);
-    }
-    let size = ((unsafe { GetSystemMetrics(SM_CXSMICON).max(16) } as f32) * dpi).round() as i32;
-    (
-        size,
-        size,
-        (size as f32 * 0.62).max(8.0),
-        size / 2,
-        size as f32 / 2.0,
-    )
-}
-
+#[cfg(not(target_os = "windows"))]
 fn metric_color(value: Option<&str>, symbol: &str) -> &'static str {
     if symbol == "battery.100" {
         if let Some(soc) =
@@ -246,20 +223,12 @@ fn metric_color(value: Option<&str>, symbol: &str) -> &'static str {
     }
 }
 
-#[cfg(target_os = "windows")]
-fn bolt_path(width: i32) -> &'static str {
-    if width <= 16 {
-        r#"<path d="M13 1 6 8h4l-4 7 9-8h-4z" fill="white"/>"#
-    } else {
-        r#"<path d="M26 2 12 16h8l-8 14 18-16h-8z" fill="white"/>"#
-    }
-}
-
 #[cfg(not(target_os = "windows"))]
 fn bolt_path(_width: i32) -> &'static str {
     r#"<path d="M19 1 9 9h6l-5 8 14-10h-6z" fill="white"/>"#
 }
 
+#[cfg(not(target_os = "windows"))]
 fn escape_xml(value: &str) -> String {
     value
         .replace('&', "&amp;")
@@ -277,7 +246,7 @@ fn compact_value(value: &str) -> String {
         .replace(" W", "")
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_os = "windows")))]
 mod tests {
     use super::{compact_value, escape_xml};
 
