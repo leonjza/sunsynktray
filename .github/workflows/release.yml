@@ -136,9 +136,12 @@ jobs:
 
       - name: Verify macOS packages
         run: |
+          echo "Verifying app executable"
           test -x dist/SunTray.app/Contents/MacOS/suntray
+          echo "Verifying bundle identifier"
           /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' dist/SunTray.app/Contents/Info.plist | grep -qx 'com.suntray.app'
-          pkgutil --payload-files "dist/SunTray-${GITHUB_REF_NAME#v}-macos-arm64.pkg" | grep -qx './Applications/SunTray.app/Contents/MacOS/suntray'
+          echo "Verifying PKG payload"
+          pkgutil --payload-files "dist/SunTray-${GITHUB_REF_NAME#v}-macos-arm64.pkg" | grep -Eq '(^|/)Applications/SunTray.app/Contents/MacOS/suntray$'
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
