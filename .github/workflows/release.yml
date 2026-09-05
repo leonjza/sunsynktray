@@ -41,6 +41,12 @@ jobs:
         with:
           tool: cargo-packager
 
+      - name: Build Windows release binary
+        run: cargo build --release --target x86_64-pc-windows-msvc
+        shell: pwsh
+        env:
+          RUSTFLAGS: -C target-feature=+crt-static
+
       - name: Build NSIS installer
         run: cargo packager --release --target x86_64-pc-windows-msvc
         shell: pwsh
@@ -108,6 +114,9 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-packager
+
+      - name: Build macOS release binary
+        run: cargo build --release --target aarch64-apple-darwin
 
       - name: Build macOS app bundle
         run: cargo packager --release --target aarch64-apple-darwin --formats app
