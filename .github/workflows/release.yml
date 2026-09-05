@@ -29,11 +29,39 @@ jobs:
         run: choco install -y nsis
         shell: pwsh
 
+      - name: Create Windows signing identity
+        run: |
+          $password = ConvertTo-SecureString "suntray-ci" -AsPlainText -Force
+          $cert = New-SelfSignedCertificate `
+            -Type CodeSigningCert `
+            -Subject "CN=leonjza" `
+            -CertStoreLocation Cert:\CurrentUser\My
+          $pfx = "$env:RUNNER_TEMP\suntray-signing.pfx"
+          Export-PfxCertificate -Cert $cert -FilePath $pfx -Password $password | Out-Null
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter signtool.exe -Recurse |
+            Where-Object { $_.FullName -match "\\x64\\signtool\.exe$" } |
+            Sort-Object FullName |
+            Select-Object -Last 1
+          if ($null -eq $signtool) {
+            throw "Windows SDK signtool.exe was not found"
+          }
+          "SUNTRAY_SIGNING_PFX=$pfx" >> $env:GITHUB_ENV
+          "SUNTRAY_SIGNING_PASSWORD=suntray-ci" >> $env:GITHUB_ENV
+          "SUNTRAY_SIGNTOOL=$($signtool.FullName)" >> $env:GITHUB_ENV
+        shell: pwsh
+
       - name: Build release binary
         run: cargo build --release --target x86_64-pc-windows-msvc
         shell: pwsh
         env:
           RUSTFLAGS: -C target-feature=+crt-static
+
+      - name: Sign Windows application binary
+        run: |
+          $binary = "target\x86_64-pc-windows-msvc\release\suntray.exe"
+          & $env:SUNTRAY_SIGNTOOL sign /fd SHA256 /f $env:SUNTRAY_SIGNING_PFX /p $env:SUNTRAY_SIGNING_PASSWORD $binary
+          if ($LASTEXITCODE -ne 0) { throw "Failed to sign the Windows application binary" }
+        shell: pwsh
 
       - name: Install cargo-packager
         run: cargo install cargo-packager --locked
@@ -45,6 +73,15 @@ jobs:
         env:
           RUSTFLAGS: -C target-feature=+crt-static
 
+      - name: Sign Windows release files
+        run: |
+          $installers = Get-ChildItem dist -Filter *-setup.exe
+          foreach ($installer in $installers) {
+            & $env:SUNTRAY_SIGNTOOL sign /fd SHA256 /f $env:SUNTRAY_SIGNING_PFX /p $env:SUNTRAY_SIGNING_PASSWORD $installer.FullName
+            if ($LASTEXITCODE -ne 0) { throw "Failed to sign the Windows installer" }
+          }
+        shell: pwsh
+
       - name: Package portable ZIP
         run: |
           New-Item -ItemType Directory -Force -Path dist\portable | Out-Null
@@ -53,6 +90,8 @@ jobs:
             throw "Release binary not found: $binary"
           }
           Copy-Item $binary dist\portable\SunTray.exe
+          & $env:SUNTRAY_SIGNTOOL sign /fd SHA256 /f $env:SUNTRAY_SIGNING_PFX /p $env:SUNTRAY_SIGNING_PASSWORD dist\portable\SunTray.exe
+          if ($LASTEXITCODE -ne 0) { throw "Failed to sign the portable Windows executable" }
           Compress-Archive -Path dist\portable\SunTray.exe -DestinationPath dist\SunTray-${{ github.ref_name }}-windows-x64-portable.zip
         shell: pwsh
 
@@ -81,6 +120,37 @@ jobs:
         run: bash packaging/set-version.sh "${GITHUB_REF_NAME#v}"
         shell: bash
 
+      - name: Create macOS signing identity
+        run: |
+          set -euo pipefail
+          certificate_dir="$RUNNER_TEMP/suntray-signing"
+          keychain="$certificate_dir/suntray.keychain-db"
+          mkdir -p "$certificate_dir"
+          openssl req -new -newkey rsa:2048 -nodes \
+            -keyout "$certificate_dir/suntray.key" \
+            -out "$certificate_dir/suntray.csr" \
+            -subj "/CN=leonjza/O=SunTray"
+          openssl x509 -req -days 3650 \
+            -in "$certificate_dir/suntray.csr" \
+            -signkey "$certificate_dir/suntray.key" \
+            -out "$certificate_dir/suntray.crt" \
+            -extfile <(printf 'extendedKeyUsage=codeSigning\\nkeyUsage=digitalSignature')
+          openssl pkcs12 -export \
+            -out "$certificate_dir/suntray.p12" \
+            -inkey "$certificate_dir/suntray.key" \
+            -in "$certificate_dir/suntray.crt" \
+            -passout pass:suntray-ci
+          security create-keychain -p suntray-ci "$keychain"
+          security unlock-keychain -p suntray-ci "$keychain"
+          security import "$certificate_dir/suntray.p12" \
+            -k "$keychain" -P suntray-ci -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: \
+            -s -k suntray-ci "$keychain"
+          security list-keychains -d user -s "$keychain"
+          security default-keychain -s "$keychain"
+          security find-identity -v -p codesigning "$keychain"
+        shell: bash
+
       - name: Install cargo-packager
         run: cargo install cargo-packager --locked
 
@@ -89,6 +159,9 @@ jobs:
 
       - name: Build macOS DMG
         run: cargo packager --release --target aarch64-apple-darwin
+
+      - name: Verify macOS ad-hoc signature
+        run: codesign --verify --deep --strict --verbose=2 dist/SunTray.app
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
