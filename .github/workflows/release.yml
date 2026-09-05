@@ -36,12 +36,6 @@ jobs:
         run: cargo check --target x86_64-pc-windows-msvc
         shell: pwsh
 
-      - name: Build release binary
-        run: cargo build --release --target x86_64-pc-windows-msvc
-        shell: pwsh
-        env:
-          RUSTFLAGS: -C target-feature=+crt-static
-
       - name: Install cargo-packager
         uses: taiki-e/install-action@v2
         with:
@@ -62,6 +56,24 @@ jobs:
           }
           Copy-Item $binary dist\portable\SunTray.exe
           Compress-Archive -Path dist\portable\SunTray.exe -DestinationPath dist\SunTray-${{ github.ref_name }}-windows-x64-portable.zip
+        shell: pwsh
+
+      - name: Verify Windows packages
+        run: |
+          $setup = Get-ChildItem dist -Filter "*-setup.exe" -File
+          if ($setup.Count -ne 1) {
+            throw "Expected exactly one NSIS installer, found $($setup.Count)"
+          }
+          $zip = Get-ChildItem dist -Filter "*-windows-x64-portable.zip" -File
+          if ($zip.Count -ne 1) {
+            throw "Expected exactly one portable ZIP, found $($zip.Count)"
+          }
+          $verify = Join-Path $env:RUNNER_TEMP "suntray-portable-verify"
+          if (Test-Path $verify) { Remove-Item -Recurse -Force $verify }
+          Expand-Archive -Path $zip.FullName -DestinationPath $verify
+          if (-not (Test-Path (Join-Path $verify "SunTray.exe"))) {
+            throw "Portable ZIP does not contain SunTray.exe"
+          }
         shell: pwsh
 
       - name: Upload Windows artifacts
@@ -97,9 +109,6 @@ jobs:
         with:
           tool: cargo-packager
 
-      - name: Build release binary
-        run: cargo build --release --target aarch64-apple-darwin
-
       - name: Build macOS app bundle
         run: cargo packager --release --target aarch64-apple-darwin --formats app
 
@@ -115,6 +124,12 @@ jobs:
             --version "$version" \
             --install-location /Applications \
             "dist/SunTray-${version}-macos-arm64.pkg"
+
+      - name: Verify macOS packages
+        run: |
+          test -x dist/SunTray.app/Contents/MacOS/suntray
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' dist/SunTray.app/Contents/Info.plist | grep -qx 'com.suntray.app'
+          pkgutil --payload-files "dist/SunTray-${GITHUB_REF_NAME#v}-macos-arm64.pkg" | grep -qx './Applications/SunTray.app/Contents/MacOS/suntray'
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4

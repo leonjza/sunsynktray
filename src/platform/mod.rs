@@ -24,7 +24,7 @@ mod instance;
 pub(crate) use instance::InstanceLock;
 
 #[cfg(target_os = "windows")]
-pub(crate) fn hide_main_window(window: &gpui_kit::Window) {
+pub(crate) fn hide_main_window(window: &gpui_kit::Window, _cx: &mut gpui_kit::App) {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
     use windows::Win32::{
         Foundation::HWND,
@@ -46,7 +46,7 @@ pub(crate) fn hide_main_window(window: &gpui_kit::Window) {
 }
 
 #[cfg(target_os = "windows")]
-pub(crate) fn show_main_window(window: &gpui_kit::Window) {
+pub(crate) fn show_main_window(window: &gpui_kit::Window, _cx: &mut gpui_kit::App) {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
     use windows::Win32::{
         Foundation::HWND,
@@ -66,6 +66,32 @@ pub(crate) fn show_main_window(window: &gpui_kit::Window) {
         let _ = ShowWindow(hwnd, SW_SHOW);
     }
 }
+
+#[cfg(target_os = "macos")]
+pub(crate) fn hide_main_window(_window: &gpui_kit::Window, cx: &mut gpui_kit::App) {
+    // GPUI does not expose per-window hide/show yet. Hiding the accessory
+    // application preserves the window entity and keeps the tray process
+    // alive, so closing the dashboard is reversible from the tray menu.
+    cx.hide();
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn show_main_window(_window: &gpui_kit::Window, cx: &mut gpui_kit::App) {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::NSApplication;
+
+    if let Some(mtm) = MainThreadMarker::new() {
+        let app = NSApplication::sharedApplication(mtm);
+        app.unhide(None);
+    }
+    cx.activate(true);
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+pub(crate) fn hide_main_window(_window: &gpui_kit::Window, _cx: &mut gpui_kit::App) {}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+pub(crate) fn show_main_window(_window: &gpui_kit::Window, _cx: &mut gpui_kit::App) {}
 
 #[cfg(target_os = "windows")]
 mod windows_tray_icon;

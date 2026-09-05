@@ -9,6 +9,7 @@ use std::{
 
 type ProgressCallback = Arc<dyn Fn(&str) + Send + Sync>;
 
+#[derive(Clone)]
 pub(crate) struct SunsynkClient {
     pub(crate) http: Client,
     pub(crate) base_url: String,
@@ -60,13 +61,7 @@ impl SunsynkClient {
         }
     }
 
-    /// Fetch a raw authenticated response for the opt-in API inspection tool.
-    /// Normal application code should use the typed methods instead.
-    pub(crate) async fn get(
-        &mut self,
-        path: &str,
-        params: Option<&[(&str, String)]>,
-    ) -> Result<Value> {
+    pub(crate) async fn ensure_authenticated(&mut self) -> Result<()> {
         if self.access_token.is_none()
             || self.access_expires_at.is_some_and(|expires| {
                 expires.saturating_duration_since(Instant::now()) <= Duration::from_secs(30)
@@ -74,24 +69,46 @@ impl SunsynkClient {
         {
             self.authenticate().await?;
         }
+        Ok(())
+    }
+
+    /// Fetch a raw authenticated response for the opt-in API inspection tool.
+    /// Normal application code should use the typed methods instead.
+    pub(crate) async fn get(
+        &mut self,
+        path: &str,
+        params: Option<&[(&str, String)]>,
+    ) -> Result<Value> {
+        self.ensure_authenticated().await?;
+        match self.get_authenticated(path, params).await {
+            Err(error) if error.downcast_ref::<AuthenticationExpired>().is_some() => {
+                self.access_token = None;
+                self.ensure_authenticated()
+                    .await
+                    .with_context(|| format!("re-authenticating before GET {path}"))?;
+                self.get_authenticated(path, params)
+                    .await
+                    .with_context(|| format!("retrying GET {path}"))
+            }
+            result => result,
+        }
+    }
+
+    pub(crate) async fn get_authenticated(
+        &self,
+        path: &str,
+        params: Option<&[(&str, String)]>,
+    ) -> Result<Value> {
         let query = params.map(|items| {
             items
                 .iter()
                 .map(|(k, v)| (*k, v.clone()))
                 .collect::<Vec<_>>()
         });
-        let response = match self.request("GET", path, query.as_deref(), None).await {
-            Err(error) if error.downcast_ref::<AuthenticationExpired>().is_some() => {
-                self.access_token = None;
-                self.authenticate()
-                    .await
-                    .with_context(|| format!("re-authenticating before GET {path}"))?;
-                self.request("GET", path, query.as_deref(), None)
-                    .await
-                    .with_context(|| format!("retrying GET {path}"))?
-            }
-            result => result.with_context(|| format!("GET {path}"))?,
-        };
+        let response = self
+            .request("GET", path, query.as_deref(), None)
+            .await
+            .with_context(|| format!("GET {path}"))?;
         if response.get("success").and_then(Value::as_bool) != Some(true) {
             bail!(
                 "GET {path}: {}",

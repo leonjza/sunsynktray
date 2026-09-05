@@ -42,7 +42,7 @@ pub(crate) fn history_label(label: &str) -> String {
 }
 
 pub(crate) fn format_power(watts: f64) -> String {
-    if watts >= 1000. {
+    if watts.abs() >= 1000. {
         format!("{:.2} kW", watts / 1000.)
     } else {
         format!("{watts:.0} W")
@@ -53,4 +53,14 @@ pub(crate) fn format_energy(value: Option<f64>) -> String {
     value
         .map(|value| format!("{value:.1} kWh"))
         .unwrap_or_else(|| "—".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_power;
+
+    #[test]
+    fn formats_negative_kilowatt_values_consistently() {
+        assert_eq!(format_power(-1250.0), "-1.25 kW");
+    }
 }

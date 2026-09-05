@@ -131,6 +131,7 @@ impl TrayMetric {
     }
 }
 
+#[derive(Clone)]
 pub(crate) enum ConnectionState {
     Unconfigured,
     Connecting,

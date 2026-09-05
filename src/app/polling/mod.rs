@@ -8,8 +8,7 @@ use crate::{
 };
 use gpui_kit::*;
 
-use super::{ConnectionState, Dashboard};
-use crate::app::Screen;
+use super::{ConnectionState, MonitorController};
 
 pub(super) fn is_fetch_command(command: &PollCommand) -> bool {
     matches!(command, PollCommand::Refresh | PollCommand::Select(_, _))
@@ -19,7 +18,7 @@ pub(super) fn should_queue_command(command: &PollCommand, fetching: bool) -> boo
     !fetching || !is_fetch_command(command)
 }
 
-impl Dashboard {
+impl MonitorController {
     pub(crate) fn apply_snapshot(
         &mut self,
         snapshot: EnergySnapshot,
@@ -55,7 +54,6 @@ impl Dashboard {
     pub(crate) fn apply_history(&mut self, history: Vec<HistorySeries>) {
         self.state.set_history(history);
         self.history_previous_date = None;
-        self.history_is_manual = self.history_date != chrono::Local::now().date_naive();
         self.fetching = false;
         self.next_refresh_in = Some(self.refresh_seconds);
         self.activity = format!(
@@ -195,12 +193,9 @@ impl Dashboard {
             return;
         }
         if self.selected_serial.as_deref() == Some(serial.as_str()) {
-            self.screen = Screen::Dashboard;
-            cx.notify();
             return;
         }
         self.selected_serial = Some(serial.clone());
-        self.screen = Screen::Dashboard;
         if let Some((email, _)) = &self.credentials {
             credentials::save_selection_async(email.clone(), serial.clone());
         }
@@ -216,6 +211,37 @@ impl Dashboard {
 
     pub(crate) fn refresh_now(&mut self, cx: &mut Context<Self>) {
         self.send_poll_command(PollCommand::Refresh, cx);
+    }
+
+    pub(crate) fn change_history_day(&mut self, offset: i64, cx: &mut Context<Self>) {
+        if self.fetching {
+            return;
+        }
+        let today = chrono::Local::now().date_naive();
+        let date = self.history_date + chrono::Duration::days(offset);
+        if date > today || date == self.history_date {
+            return;
+        }
+        if !self.polling {
+            self.activity = "Historical data is unavailable until connected".into();
+            cx.notify();
+            return;
+        }
+        self.history_previous_date = Some(self.history_date);
+        self.history_date = date;
+        self.history_is_manual = date != today;
+        let queued = self
+            .poll_sender
+            .as_ref()
+            .is_some_and(|sender| sender.try_send(PollCommand::HistoryDate(date)).is_ok());
+        if queued {
+            self.fetching = true;
+            self.activity = "Fetching historical data…".into();
+        } else {
+            self.history_date = self.history_previous_date.take().unwrap_or(today);
+            self.activity = "Polling is unavailable".into();
+        }
+        cx.notify();
     }
 }
 

@@ -13,6 +13,7 @@ mod sunsynk;
 mod ui;
 
 use anyhow::Result;
+use gpui_kit::AppContext;
 use tracing_subscriber::EnvFilter;
 
 fn main() -> Result<()> {
@@ -38,7 +39,10 @@ fn main() -> Result<()> {
             platform::tray::install(cx);
             let state = app::MonitorState::new(settings.clone());
             cx.set_global(app::MonitorStateGlobal(state.clone()));
-            app::open_main_window(cx, state, !startup);
+            let controller = cx.new(|_| app::MonitorController::new(state.clone()));
+            cx.set_global(app::MonitorControllerGlobal(controller.clone()));
+            controller.update(cx, |controller, cx| controller.initialize(cx));
+            app::open_main_window(cx, state, controller, !startup);
         });
     Ok(())
 }

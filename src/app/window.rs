@@ -1,8 +1,13 @@
-use super::{Dashboard, MonitorState};
+use super::{Dashboard, MonitorController, MonitorState};
 use gpui_kit::*;
 use std::sync::Arc;
 
-pub(crate) fn open_main_window(cx: &mut App, state: Arc<MonitorState>, show: bool) {
+pub(crate) fn open_main_window(
+    cx: &mut App,
+    state: Arc<MonitorState>,
+    controller: Entity<MonitorController>,
+    show: bool,
+) {
     let bounds = Bounds::centered(None, size(px(620.), px(760.)), cx);
     if let Err(error) = cx.open_window(
         WindowOptions {
@@ -15,16 +20,16 @@ pub(crate) fn open_main_window(cx: &mut App, state: Arc<MonitorState>, show: boo
             ..Default::default()
         },
         |window, cx| {
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
             window.on_window_should_close(cx, |window, _cx| {
                 // Closing the main window hides SunTray to the tray instead of
                 // destroying the window. The tray's Quit action remains the
                 // explicit way to exit the application.
-                crate::platform::hide_main_window(window);
+                crate::platform::hide_main_window(window, _cx);
                 false
             });
 
-            let view = cx.new(|cx| Dashboard::new(state, window, cx));
+            let view = cx.new(|cx| Dashboard::new(state, controller, window, cx));
             cx.new(|cx| gpui_kit::component::Root::new(view, window, cx))
         },
     ) {

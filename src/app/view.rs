@@ -12,11 +12,16 @@ use gpui_kit::*;
 
 impl Render for Dashboard {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let (status_activity, status_fetching, status_next_refresh_in) = {
+            let controller = self.controller.read(cx);
+            (
+                controller.activity.clone(),
+                controller.fetching,
+                controller.next_refresh_in,
+            )
+        };
         let status_bar = self.status_bar.clone();
         let status_screen = self.screen;
-        let status_activity = self.activity.clone();
-        let status_fetching = self.fetching;
-        let status_next_refresh_in = self.next_refresh_in;
         status_bar.update(cx, |status, cx| {
             status.sync(
                 status_screen,
@@ -26,7 +31,7 @@ impl Render for Dashboard {
                 cx,
             );
         });
-
+        let controller = self.controller.read(cx);
         let theme = cx.theme();
         let entity = cx.entity().clone();
         let chart_bounds = self.chart_bounds.clone();
@@ -56,14 +61,14 @@ impl Render for Dashboard {
                 Screen::Dashboard => dashboard_view::render(
                     theme,
                     &self.state,
-                    &self.connection,
-                    self.fetching,
-                    self.history_date,
+                    &controller.connection,
+                    status_fetching,
+                    controller.history_date,
                     self.hovered_history,
                     self.chart_bounds.clone(),
-                    self.inverters
-                        .iter()
-                        .find(|inverter| Some(&inverter.serial) == self.selected_serial.as_ref()),
+                    controller.inverters.iter().find(|inverter| {
+                        Some(&inverter.serial) == controller.selected_serial.as_ref()
+                    }),
                     entity.clone(),
                 ),
                 Screen::Settings => settings_view::render(SettingsView {
@@ -71,11 +76,11 @@ impl Render for Dashboard {
                     email: &self.email,
                     password: &self.password,
                     refresh_interval: &self.refresh_interval,
-                    connection: &self.connection,
-                    inverters: &self.inverters,
-                    selected: &self.selected_serial,
-                    tray_metric: self.tray_metric,
-                    fetching: self.fetching,
+                    connection: &controller.connection,
+                    inverters: &controller.inverters,
+                    selected: &controller.selected_serial,
+                    tray_metric: controller.tray_metric,
+                    fetching: status_fetching,
                     startup_enabled: self.startup_enabled,
                     startup_error: self.startup_error.clone(),
                     entity,

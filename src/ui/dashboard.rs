@@ -147,7 +147,7 @@ pub(crate) fn render(
         )
         .child(history_chart(
             theme,
-            &state.history(),
+            state.history(),
             history_date,
             hovered_history,
             chart_bounds,
@@ -222,25 +222,31 @@ fn dashboard_placeholder(
 
 fn history_chart(
     theme: &Theme,
-    history: &[HistorySeries],
+    history: Arc<Vec<HistorySeries>>,
     date: chrono::NaiveDate,
     hovered: Option<usize>,
     chart_bounds: Arc<Mutex<Option<Bounds<Pixels>>>>,
     entity: Entity<Dashboard>,
 ) -> AnyElement {
-    let power = history
+    let power_indices = history
         .iter()
-        .filter(|series| !series.label.to_ascii_lowercase().contains("soc"))
-        .cloned()
+        .enumerate()
+        .filter_map(|(index, series)| {
+            (!series.label.to_ascii_lowercase().contains("soc")).then_some(index)
+        })
         .collect::<Vec<_>>();
-    let soc = history
+    let soc_indices = history
         .iter()
-        .filter(|series| series.label.to_ascii_lowercase().contains("soc"))
-        .cloned()
+        .enumerate()
+        .filter_map(|(index, series)| {
+            series
+                .label
+                .to_ascii_lowercase()
+                .contains("soc")
+                .then_some(index)
+        })
         .collect::<Vec<_>>();
-    let times = history_chart_module::times(history);
-    let mut plotted = power.clone();
-    plotted.extend(soc.iter().cloned());
+    let times = history_chart_module::times(&history);
     let previous = entity.clone();
     let next = entity.clone();
     let chart_entity = entity.clone();
@@ -250,15 +256,16 @@ fn history_chart(
         .w_full()
         .h(px(history_chart_module::HEIGHT))
         .child(history_chart_module::HistoryPlot {
-            series: power.clone(),
-            soc_series: soc.clone(),
+            history: history.clone(),
+            power_indices: power_indices.clone(),
+            soc_indices,
             times: times.clone(),
             chart_bounds,
         })
         .child(history_chart_module::hover_layer(
             theme,
-            history,
-            &power,
+            &history,
+            &power_indices,
             entity.clone(),
             &times,
             hovered,
@@ -308,7 +315,7 @@ fn history_chart(
             div()
                 .h_flex()
                 .justify_end()
-                .child(history_chart_module::legend(theme, &plotted)),
+                .child(history_chart_module::legend(theme, &history)),
         )
         .into_any_element()
 }

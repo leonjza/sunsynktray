@@ -6,9 +6,9 @@ use crate::{
 use gpui_kit::*;
 use std::{sync::atomic::Ordering, thread};
 
-use super::{ConnectionState, Dashboard};
+use super::{ConnectionState, MonitorController};
 
-impl Dashboard {
+impl MonitorController {
     pub(crate) fn connect(&mut self, email: String, password: String, cx: &mut Context<Self>) {
         if self.fetching {
             return;
@@ -152,9 +152,6 @@ impl Dashboard {
                                 return;
                             }
                             dashboard.fetching = false;
-                            if !dashboard.history_is_manual {
-                                dashboard.history_date = chrono::Local::now().date_naive();
-                            }
                             dashboard.selected_serial = selected.clone();
                             dashboard.inverters = inverters;
                             dashboard.refresh_token = refresh_token;

@@ -1,6 +1,6 @@
-use super::{parsing::*, SunsynkClient};
+use super::{error::AuthenticationExpired, parsing::*, SunsynkClient};
 use crate::domain::{EnergySnapshot, HistorySeries, InverterSummary};
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use serde_json::Value;
 
 impl SunsynkClient {
@@ -65,24 +65,44 @@ impl SunsynkClient {
         serial: &str,
     ) -> Result<(EnergySnapshot, Option<Vec<HistorySeries>>)> {
         let today = chrono::Local::now().date_naive().to_string();
-        let realtime = self
-            .get(
-                &format!("/api/v1/plant/{plant_id}/realtime"),
-                Some(&[("id", plant_id.to_string())]),
+        // Authenticate once, then fetch the three independent readings in
+        // parallel. Each clone shares reqwest's connection pool while keeping
+        // the client's mutable token state isolated from the other requests.
+        self.ensure_authenticated().await?;
+        let realtime_path = format!("/api/v1/plant/{plant_id}/realtime");
+        let day_path = format!("/api/v1/plant/energy/{plant_id}/day");
+        let flow_path = format!("/api/v1/plant/energy/{plant_id}/flow");
+        let day_date = today.clone();
+        let mut responses = self
+            .parallel_readings(
+                &realtime_path,
+                &day_path,
+                &flow_path,
+                plant_id,
+                &day_date,
+                &today,
             )
-            .await;
+            .await?;
+        if responses
+            .iter()
+            .any(|response| response.as_ref().err().is_some_and(is_auth_expired))
+        {
+            self.access_token = None;
+            self.ensure_authenticated().await?;
+            responses = self
+                .parallel_readings(
+                    &realtime_path,
+                    &day_path,
+                    &flow_path,
+                    plant_id,
+                    &day_date,
+                    &today,
+                )
+                .await?;
+        }
+        let [realtime, day, flow] = responses;
         // Flow is the authoritative live-state response. Keep the live
         // dashboard usable if an auxiliary energy endpoint is unavailable.
-        let day = self
-            .get(
-                &format!("/api/v1/plant/energy/{plant_id}/day"),
-                Some(&[
-                    ("lan", "en".to_owned()),
-                    ("date", today.clone()),
-                    ("id", plant_id.to_string()),
-                ]),
-            )
-            .await;
         let (realtime, day) = match (realtime, day) {
             (Ok(realtime), Ok(day)) => (Some(realtime), Some(day)),
             (realtime, day) => {
@@ -98,12 +118,7 @@ impl SunsynkClient {
         // The flow endpoint is both the live power-flow source and, for the
         // current day, the chart source. Never use a historical chart date for
         // live dashboard values.
-        let flow = self
-            .get(
-                &format!("/api/v1/plant/energy/{plant_id}/flow"),
-                Some(&[("date", today.clone())]),
-            )
-            .await?;
+        let flow = flow?;
         let live = flow_object(&flow)
             .ok_or_else(|| anyhow!("SunSynk plant flow response contained no live readings"))?;
         let mut snapshot = snapshot_from_flow(live, serial);
@@ -132,6 +147,54 @@ impl SunsynkClient {
                 .or_else(|| daily_solar_yield_from_history(&day_history));
         }
         Ok((snapshot, (!history.is_empty()).then_some(history)))
+    }
+
+    async fn parallel_readings(
+        &self,
+        realtime_path: &str,
+        day_path: &str,
+        flow_path: &str,
+        plant_id: i64,
+        day_date: &str,
+        today: &str,
+    ) -> Result<[Result<Value>; 3]> {
+        let realtime_client = self.clone();
+        let day_client = self.clone();
+        let flow_client = self.clone();
+        let realtime_path = realtime_path.to_owned();
+        let day_path = day_path.to_owned();
+        let flow_path = flow_path.to_owned();
+        let day_date = day_date.to_owned();
+        let today = today.to_owned();
+        let realtime_task = tokio::spawn(async move {
+            realtime_client
+                .get_authenticated(&realtime_path, Some(&[("id", plant_id.to_string())]))
+                .await
+        });
+        let day_task = tokio::spawn(async move {
+            day_client
+                .get_authenticated(
+                    &day_path,
+                    Some(&[
+                        ("lan", "en".to_owned()),
+                        ("date", day_date),
+                        ("id", plant_id.to_string()),
+                    ]),
+                )
+                .await
+        });
+        let flow_task = tokio::spawn(async move {
+            flow_client
+                .get_authenticated(&flow_path, Some(&[("date", today)]))
+                .await
+        });
+        Ok([
+            realtime_task
+                .await
+                .context("realtime request task stopped")?,
+            day_task.await.context("daily request task stopped")?,
+            flow_task.await.context("flow request task stopped")?,
+        ])
     }
 
     pub async fn inspect_endpoint(
@@ -171,9 +234,18 @@ impl SunsynkClient {
     }
 }
 
+fn is_auth_expired(error: &anyhow::Error) -> bool {
+    error
+        .chain()
+        .any(|cause| cause.downcast_ref::<AuthenticationExpired>().is_some())
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::parsing::{flow_object, history_series, snapshot_from_flow};
+    use super::is_auth_expired;
+    use crate::sunsynk::error::AuthenticationExpired;
+    use anyhow::anyhow;
     use serde_json::Value;
 
     #[test]
@@ -188,5 +260,11 @@ mod tests {
         assert_eq!(snapshot.battery_soc, 99.0);
         assert!(!history_series(&responses["plant_energy_day"]).is_empty());
         assert!(flow_object(&responses["flow"]).is_some());
+    }
+
+    #[test]
+    fn detects_auth_expiry_through_request_context() {
+        let error = anyhow!(AuthenticationExpired).context("GET /api/v1/test");
+        assert!(is_auth_expired(&error));
     }
 }

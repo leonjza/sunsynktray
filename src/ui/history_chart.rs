@@ -21,8 +21,9 @@ const PLOT_TOP: f32 = 10.;
 
 #[derive(IntoPlot)]
 pub(crate) struct HistoryPlot {
-    pub(crate) series: Vec<HistorySeries>,
-    pub(crate) soc_series: Vec<HistorySeries>,
+    pub(crate) history: Arc<Vec<HistorySeries>>,
+    pub(crate) power_indices: Vec<usize>,
+    pub(crate) soc_indices: Vec<usize>,
     pub(crate) times: Vec<String>,
     pub(crate) chart_bounds: Arc<Mutex<Option<Bounds<Pixels>>>>,
 }
@@ -48,7 +49,7 @@ impl Plot for HistoryPlot {
             self.times.clone(),
             vec![0., plot_bounds.size.width.as_f32()],
         );
-        let (min_value, max_value) = power_bounds(&self.series);
+        let (min_value, max_value) = power_bounds(&self.history, &self.power_indices);
         let y = ScaleLinear::new(vec![min_value, max_value], vec![height, PLOT_TOP]);
         let y_ticks = [min_value, (min_value + max_value) / 2., max_value];
         let tick_margin = (self.times.len() / 5).max(1);
@@ -101,7 +102,8 @@ impl Plot for HistoryPlot {
             .dash_array(&[px(4.), px(2.)])
             .paint(&plot_bounds, window);
         let colors = history_colors();
-        for series in &self.series {
+        for &index in &self.power_indices {
+            let series = &self.history[index];
             let x_scale = x.clone();
             let y_scale = y.clone();
             Line::new()
@@ -114,7 +116,8 @@ impl Plot for HistoryPlot {
                 .paint(&plot_bounds, window);
         }
         let soc_y = ScaleLinear::new(vec![0., 100.], vec![height, PLOT_TOP]);
-        for series in &self.soc_series {
+        for &index in &self.soc_indices {
+            let series = &self.history[index];
             let x_scale = x.clone();
             let y_scale = soc_y.clone();
             Line::new()
@@ -141,9 +144,10 @@ pub(crate) fn times(history: &[HistorySeries]) -> Vec<String> {
     times
 }
 
-pub(crate) fn power_bounds(series: &[HistorySeries]) -> (f64, f64) {
-    series
+pub(crate) fn power_bounds(history: &[HistorySeries], indices: &[usize]) -> (f64, f64) {
+    indices
         .iter()
+        .filter_map(|&index| history.get(index))
         .flat_map(|series| series.points.iter().map(|point| point.watts))
         .chain(Some(0.))
         .fold((0.0_f64, 0.0_f64), |(min, max), value| {
@@ -188,12 +192,12 @@ pub(crate) fn legend(theme: &Theme, history: &[HistorySeries]) -> impl IntoEleme
 pub(crate) fn hover_layer(
     theme: &Theme,
     history: &[HistorySeries],
-    power: &[HistorySeries],
+    power_indices: &[usize],
     entity: Entity<Dashboard>,
     times: &[String],
     hovered: Option<usize>,
 ) -> impl IntoElement {
-    let (min_value, max_value) = power_bounds(power);
+    let (min_value, max_value) = power_bounds(history, power_indices);
     let chart_height = HEIGHT - gpui_kit::component::plot::AXIS_GAP;
     let mut layer = div()
         .absolute()
@@ -214,7 +218,8 @@ pub(crate) fn hover_layer(
         let mut cell = div().flex_1().h_full().relative();
         if hovered == Some(index) {
             let colors = history_colors();
-            let power_dots = power.iter().filter_map(|series| {
+            let power_dots = power_indices.iter().filter_map(|&index| {
+                let series = history.get(index)?;
                 let point = series
                     .points
                     .iter()

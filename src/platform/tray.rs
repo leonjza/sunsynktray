@@ -107,19 +107,29 @@ fn open_dashboard(_: &OpenDashboard, cx: &mut App) {
             .try_global::<crate::app::MonitorStateGlobal>()
             .map(|state| state.0.clone())
         {
-            crate::app::open_main_window(cx, state, true);
+            if let Some(controller) = cx
+                .try_global::<crate::app::MonitorControllerGlobal>()
+                .map(|controller| controller.0.clone())
+            {
+                crate::app::open_main_window(cx, state, controller, true);
+            }
         }
     }
     for window in cx.windows() {
-        let _ = window.update(cx, |_, window, _| {
-            #[cfg(target_os = "windows")]
-            crate::platform::show_main_window(window);
+        let _ = window.update(cx, |_, window, cx| {
+            crate::platform::show_main_window(window, cx);
             window.activate_window();
         });
     }
 }
 
 fn quit(_: &Quit, cx: &mut App) {
+    if let Some(controller) = cx
+        .try_global::<crate::app::MonitorControllerGlobal>()
+        .map(|controller| controller.0.clone())
+    {
+        controller.update(cx, |controller, _| controller.stop_polling());
+    }
     cx.quit();
 }
 
