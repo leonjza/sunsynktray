@@ -10,7 +10,10 @@ pub(crate) struct InstanceLock {
 impl InstanceLock {
     /// Attempts to acquire the lock, returning `None` if another instance owns it.
     pub(crate) fn acquire() -> Result<Option<Self>> {
-        let path = lock_path();
+        Self::acquire_at(&lock_path())
+    }
+
+    fn acquire_at(path: &PathBuf) -> Result<Option<Self>> {
         let file = OpenOptions::new()
             .create(true)
             .read(true)
@@ -40,17 +43,20 @@ fn lock_path() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::InstanceLock;
+    use std::path::PathBuf;
 
     #[test]
     fn only_one_instance_can_hold_the_lock() {
-        let first = InstanceLock::acquire()
+        let path = PathBuf::from(std::env::temp_dir())
+            .join(format!("SunTray.instance.test.{}.lock", std::process::id()));
+        let first = InstanceLock::acquire_at(&path)
             .expect("first instance lock should be available")
             .expect("test should own the instance lock");
-        assert!(InstanceLock::acquire()
+        assert!(InstanceLock::acquire_at(&path)
             .expect("second lock attempt should succeed")
             .is_none());
         drop(first);
-        assert!(InstanceLock::acquire()
+        assert!(InstanceLock::acquire_at(&path)
             .expect("lock should be released after drop")
             .is_some());
     }
