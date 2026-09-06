@@ -45,8 +45,7 @@ impl SunsynkClient {
         self.refresh_token = data
             .get("refresh_token")
             .and_then(Value::as_str)
-            .map(str::to_owned)
-            .or_else(|| self.refresh_token.clone());
+            .map(str::to_owned);
         if body.get("success").and_then(Value::as_bool) != Some(true) || self.access_token.is_none()
         {
             bail!(

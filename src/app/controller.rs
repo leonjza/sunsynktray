@@ -14,8 +14,10 @@ pub(crate) struct MonitorController {
     pub(crate) connect_generation: u64,
     pub(crate) connect_epoch: Arc<AtomicU64>,
     pub(crate) connect_cancel: Option<tokio::sync::oneshot::Sender<()>>,
+    pub(crate) connect_task: Option<tokio::task::JoinHandle<()>>,
     pub(crate) poll_sender: Option<tokio::sync::mpsc::Sender<PollCommand>>,
     pub(crate) poll_cancel: Option<tokio::sync::oneshot::Sender<()>>,
+    pub(crate) poll_task: Option<tokio::task::JoinHandle<()>>,
     pub(crate) connection: ConnectionState,
     pub(crate) inverters: Vec<InverterSummary>,
     pub(crate) selected_serial: Option<String>,
@@ -47,8 +49,10 @@ impl MonitorController {
             connect_generation: 0,
             connect_epoch: Arc::new(AtomicU64::new(0)),
             connect_cancel: None,
+            connect_task: None,
             poll_sender: None,
             poll_cancel: None,
+            poll_task: None,
             connection: ConnectionState::Unconfigured,
             inverters: Vec::new(),
             selected_serial: None,
@@ -85,6 +89,10 @@ impl MonitorController {
                     Ok(Some(saved)) => {
                         let email = saved.email.clone();
                         let password = saved.password.clone();
+                        if let Some(snapshot) = saved.cached_snapshot.clone() {
+                            controller.state.set_cached_data(snapshot, Vec::new());
+                            controller.has_cached_data = true;
+                        }
                         controller.connection = if controller.has_cached_data {
                             ConnectionState::Connected
                         } else {
@@ -125,7 +133,12 @@ impl MonitorController {
 
     pub(crate) fn set_tray_metric(&mut self, metric: Option<TrayMetric>, cx: &mut Context<Self>) {
         self.tray_metric = metric;
-        credentials::save_tray_metric_async(metric.map(TrayMetric::saved_name).map(str::to_owned));
+        if let Some((email, _)) = &self.credentials {
+            credentials::save_tray_metric_async(
+                email.clone(),
+                metric.map(TrayMetric::saved_name).map(str::to_owned),
+            );
+        }
         self.update_tray(cx);
         cx.notify();
     }
@@ -202,6 +215,15 @@ impl Drop for MonitorController {
         }
         if let Some(cancel) = self.poll_cancel.take() {
             let _ = cancel.send(());
+        }
+        if let Some(task) = self.poll_task.take() {
+            task.abort();
+        }
+        if let Some(cancel) = self.connect_cancel.take() {
+            let _ = cancel.send(());
+        }
+        if let Some(task) = self.connect_task.take() {
+            task.abort();
         }
     }
 }

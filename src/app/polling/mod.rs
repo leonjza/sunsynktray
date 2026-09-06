@@ -31,11 +31,19 @@ impl MonitorController {
         }
         self.state.set_snapshot(snapshot);
         self.has_cached_data = true;
+        if let Some((email, _)) = &self.credentials {
+            credentials::save_cached_data_async(email.clone(), self.state.snapshot());
+        }
+        let previous_refresh_token = self.refresh_token.clone();
         let token_changed = refresh_token != self.refresh_token;
         self.refresh_token = refresh_token.clone();
         if token_changed {
             if let (Some((email, _)), Some(token)) = (&self.credentials, refresh_token.as_deref()) {
-                credentials::save_refresh_token_async(email.clone(), token.to_owned());
+                credentials::save_refresh_token_async(
+                    email.clone(),
+                    previous_refresh_token,
+                    token.to_owned(),
+                );
             }
         }
         if !self.history_is_manual {
@@ -80,6 +88,7 @@ impl MonitorController {
         self.polling = false;
         self.poll_sender = None;
         self.poll_cancel = None;
+        self.poll_task = None;
         self.fetching = false;
         self.connection = if self.has_cached_data {
             ConnectionState::Stale
@@ -117,18 +126,20 @@ impl MonitorController {
             return;
         };
         self.polling = true;
-        let (command_sender, cancel_sender, mut receiver) = worker::spawn(protocol::PollConfig {
-            generation: poll_generation,
-            base_url: details.0,
-            email,
-            password,
-            serial,
-            plant_id: details.3,
-            refresh_token: details.4,
-            interval_seconds: interval,
-        });
+        let (command_sender, cancel_sender, mut receiver, task) =
+            worker::spawn(protocol::PollConfig {
+                generation: poll_generation,
+                base_url: details.0,
+                email,
+                password,
+                serial,
+                plant_id: details.3,
+                refresh_token: details.4,
+                interval_seconds: interval,
+            });
         self.poll_sender = Some(command_sender);
         self.poll_cancel = Some(cancel_sender);
+        self.poll_task = task;
         cx.spawn(async move |_, cx| {
             while let Some(result) = receiver.recv().await {
                 if entity
@@ -224,6 +235,9 @@ impl MonitorController {
         }
         if let Some(cancel) = self.poll_cancel.take() {
             let _ = cancel.send(());
+        }
+        if let Some(task) = self.poll_task.take() {
+            task.abort();
         }
         self.polling = false;
         self.fetching = false;

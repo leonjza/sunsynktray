@@ -83,6 +83,20 @@ impl MonitorState {
         data.live_data = true;
     }
 
+    pub(crate) fn set_cached_data(&self, snapshot: EnergySnapshot, history: Vec<HistorySeries>) {
+        let mut data = self.data.lock().unwrap_or_else(|error| error.into_inner());
+        data.snapshot = snapshot;
+        data.live_data = true;
+        data.history = make_history_snapshot(Arc::new(history));
+    }
+
+    pub(crate) fn clear_cached_data(&self) {
+        let mut data = self.data.lock().unwrap_or_else(|error| error.into_inner());
+        data.snapshot = EnergySnapshot::default();
+        data.live_data = false;
+        data.history = make_history_snapshot(Arc::new(Vec::new()));
+    }
+
     pub(crate) fn set_history(&self, history: Vec<HistorySeries>) {
         let history = make_history_snapshot(Arc::new(history));
         let mut data = self.data.lock().unwrap_or_else(|error| error.into_inner());

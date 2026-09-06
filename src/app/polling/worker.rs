@@ -2,7 +2,7 @@ use super::protocol::{Command, PollConfig, PollResult};
 use crate::sunsynk::SunsynkClient;
 use anyhow::anyhow;
 use futures_util::future::{select, Either};
-use std::{thread, time::Duration};
+use std::time::Duration;
 
 pub(crate) fn spawn(
     config: PollConfig,
@@ -10,140 +10,144 @@ pub(crate) fn spawn(
     tokio::sync::mpsc::Sender<Command>,
     tokio::sync::oneshot::Sender<()>,
     tokio::sync::mpsc::Receiver<PollResult>,
+    Option<tokio::task::JoinHandle<()>>,
 ) {
     const COMMAND_CAPACITY: usize = 8;
     const RESULT_CAPACITY: usize = 32;
-    let (command_sender, mut command_receiver) = tokio::sync::mpsc::channel(COMMAND_CAPACITY);
-    let (cancel_sender, mut cancel_receiver) = tokio::sync::oneshot::channel();
+    let (command_sender, command_receiver) = tokio::sync::mpsc::channel(COMMAND_CAPACITY);
+    let (cancel_sender, cancel_receiver) = tokio::sync::oneshot::channel();
     let (sender, receiver) = tokio::sync::mpsc::channel(RESULT_CAPACITY);
 
-    thread::spawn(move || {
-        let generation = config.generation;
-        let mut serial = config.serial;
-        let mut plant_id = config.plant_id;
-        let runtime = match tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-        {
-            Ok(runtime) => runtime,
-            Err(error) => {
-                let _ = sender.blocking_send(PollResult::Stopped {
-                    error: format!("polling runtime stopped: {error}"),
-                });
-                return;
-            }
-        };
-        runtime.block_on(async move {
-            let interval = config.interval_seconds.max(1);
-            let mut retry_delay = interval;
-            let mut client =
-                match SunsynkClient::new(config.base_url, config.email, config.password) {
-                    Ok(client) => client
-                        .with_refresh_token(config.refresh_token)
-                        .with_progress({
-                            let sender = sender.clone();
-                            move |message| {
-                                let _ = sender.try_send(PollResult::Progress {
-                                    generation,
-                                    message: message.to_owned(),
-                                });
-                            }
-                        }),
-                    Err(error) => {
-                        let _ = send_cancellable(
-                            &sender,
-                            PollResult::Stopped {
-                                error: format!("polling client stopped: {error}"),
-                            },
-                            &mut cancel_receiver,
-                        )
-                        .await;
-                        return;
-                    }
-                };
-            loop {
-                match cancellable(
-                    tokio::time::timeout(Duration::from_secs(retry_delay), command_receiver.recv()),
-                    &mut cancel_receiver,
-                )
-                .await
-                {
-                    None => break,
-                    Some(Ok(Some(Command::Refresh))) => {}
-                    Some(Ok(Some(Command::Stop))) => break,
-                    Some(Ok(Some(Command::Select(next_serial, next_plant_id)))) => {
-                        serial = next_serial;
-                        plant_id = next_plant_id;
-                    }
-                    Some(Ok(Some(Command::HistoryDate(date)))) => {
-                        if !send_cancellable(&sender, PollResult::PollStarted, &mut cancel_receiver)
-                            .await
-                        {
-                            break;
-                        }
-                        let result = cancellable(
-                            async {
-                                if let Some(plant_id) = plant_id {
-                                    client.history(plant_id, &date.to_string()).await
-                                } else {
-                                    Err(anyhow!("selected inverter has no plant"))
-                                }
-                            },
-                            &mut cancel_receiver,
-                        )
-                        .await;
-                        let Some(result) = result else { break };
-                        let result = result.map(PollResult::History).unwrap_or_else(|error| {
-                            PollResult::HistoryFailure {
-                                date,
-                                error: error.to_string(),
-                            }
-                        });
-                        if !send_cancellable(&sender, result, &mut cancel_receiver).await {
-                            break;
-                        }
-                        continue;
-                    }
-                    Some(Err(_)) => break,
-                    Some(Ok(None)) => break,
-                }
+    let task = match crate::app::runtime::spawn(run(
+        config,
+        command_receiver,
+        cancel_receiver,
+        sender.clone(),
+    )) {
+        Ok(task) => Some(task),
+        Err(error) => {
+            let _ = sender.try_send(PollResult::Stopped {
+                error: error.clone(),
+            });
+            None
+        }
+    };
 
+    (command_sender, cancel_sender, receiver, task)
+}
+
+async fn run(
+    config: PollConfig,
+    mut command_receiver: tokio::sync::mpsc::Receiver<Command>,
+    mut cancel_receiver: tokio::sync::oneshot::Receiver<()>,
+    sender: tokio::sync::mpsc::Sender<PollResult>,
+) {
+    let generation = config.generation;
+    let mut serial = config.serial;
+    let mut plant_id = config.plant_id;
+    let interval = config.interval_seconds.max(1);
+    let mut retry_delay = interval;
+    let mut client = match SunsynkClient::new(config.base_url, config.email, config.password) {
+        Ok(client) => client
+            .with_refresh_token(config.refresh_token)
+            .with_progress({
+                let sender = sender.clone();
+                move |message| {
+                    let _ = sender.try_send(PollResult::Progress {
+                        generation,
+                        message: message.to_owned(),
+                    });
+                }
+            }),
+        Err(error) => {
+            let _ = send_cancellable(
+                &sender,
+                PollResult::Stopped {
+                    error: format!("polling client stopped: {error}"),
+                },
+                &mut cancel_receiver,
+            )
+            .await;
+            return;
+        }
+    };
+    loop {
+        match cancellable(
+            tokio::time::timeout(Duration::from_secs(retry_delay), command_receiver.recv()),
+            &mut cancel_receiver,
+        )
+        .await
+        {
+            None => break,
+            Some(Ok(Some(Command::Refresh))) => {}
+            Some(Ok(Some(Command::Stop))) => break,
+            Some(Ok(Some(Command::Select(next_serial, next_plant_id)))) => {
+                serial = next_serial;
+                plant_id = next_plant_id;
+            }
+            Some(Ok(Some(Command::HistoryDate(date)))) => {
                 if !send_cancellable(&sender, PollResult::PollStarted, &mut cancel_receiver).await {
                     break;
                 }
                 let result = cancellable(
                     async {
-                        match plant_id {
-                            Some(plant_id) => client.refresh_plant(plant_id, &serial).await,
-                            None => Err(anyhow!("selected inverter has no plant")),
+                        if let Some(plant_id) = plant_id {
+                            client.history(plant_id, &date.to_string()).await
+                        } else {
+                            Err(anyhow!("selected inverter has no plant"))
                         }
                     },
                     &mut cancel_receiver,
                 )
                 .await;
                 let Some(result) = result else { break };
-                let succeeded = result.is_ok();
-                let retry_in = next_retry_delay(succeeded, interval, retry_delay);
-                let result = result
-                    .map(|(snapshot, history)| PollResult::Snapshot {
-                        snapshot,
-                        refresh_token: client.refresh_token().map(str::to_owned),
-                        history,
-                    })
-                    .unwrap_or_else(|error| PollResult::Failure {
-                        generation,
+                let result = result.map(PollResult::History).unwrap_or_else(|error| {
+                    PollResult::HistoryFailure {
+                        date,
                         error: error.to_string(),
-                        retry_in: Some(retry_in),
-                    });
+                    }
+                });
                 if !send_cancellable(&sender, result, &mut cancel_receiver).await {
                     break;
                 }
-                retry_delay = retry_in;
+                continue;
             }
-        });
-    });
+            Some(Err(_)) => break,
+            Some(Ok(None)) => break,
+        }
 
-    (command_sender, cancel_sender, receiver)
+        if !send_cancellable(&sender, PollResult::PollStarted, &mut cancel_receiver).await {
+            break;
+        }
+        let result = cancellable(
+            async {
+                match plant_id {
+                    Some(plant_id) => client.refresh_plant(plant_id, &serial).await,
+                    None => Err(anyhow!("selected inverter has no plant")),
+                }
+            },
+            &mut cancel_receiver,
+        )
+        .await;
+        let Some(result) = result else { break };
+        let succeeded = result.is_ok();
+        let retry_in = next_retry_delay(succeeded, interval, retry_delay);
+        let result = result
+            .map(|(snapshot, history)| PollResult::Snapshot {
+                snapshot,
+                refresh_token: client.refresh_token().map(str::to_owned),
+                history,
+            })
+            .unwrap_or_else(|error| PollResult::Failure {
+                generation,
+                error: error.to_string(),
+                retry_in: Some(retry_in),
+            });
+        if !send_cancellable(&sender, result, &mut cancel_receiver).await {
+            break;
+        }
+        retry_delay = retry_in;
+    }
 }
 
 async fn cancellable<F, T>(future: F, cancel: &mut tokio::sync::oneshot::Receiver<()>) -> Option<T>
@@ -176,7 +180,7 @@ pub(super) fn next_retry_delay(success: bool, interval: u64, previous: u64) -> u
 
 #[cfg(test)]
 mod tests {
-    use super::{next_retry_delay, send_cancellable, spawn};
+    use super::{next_retry_delay, send_cancellable};
     use crate::app::polling::protocol::{Command, PollConfig, PollResult};
     use std::time::Duration;
 
@@ -195,24 +199,32 @@ mod tests {
 
     #[test]
     fn worker_stops_when_stop_command_is_received() {
-        let (sender, _cancel, mut receiver) = spawn(PollConfig {
-            generation: 1,
-            base_url: "http://127.0.0.1:1".into(),
-            email: "test@example.com".into(),
-            password: "password".into(),
-            serial: "serial".into(),
-            plant_id: None,
-            refresh_token: None,
-            interval_seconds: 3600,
-        });
-        sender.try_send(Command::Stop).unwrap();
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap();
         runtime.block_on(async {
+            let (sender, command_receiver) = tokio::sync::mpsc::channel(8);
+            let (_cancel_sender, cancel_receiver) = tokio::sync::oneshot::channel();
+            let (result_sender, mut result_receiver) = tokio::sync::mpsc::channel(32);
+            sender.try_send(Command::Stop).unwrap();
+            tokio::spawn(super::run(
+                PollConfig {
+                    generation: 1,
+                    base_url: "http://127.0.0.1:1".into(),
+                    email: "test@example.com".into(),
+                    password: "password".into(),
+                    serial: "serial".into(),
+                    plant_id: None,
+                    refresh_token: None,
+                    interval_seconds: 3600,
+                },
+                command_receiver,
+                cancel_receiver,
+                result_sender,
+            ));
             assert!(
-                tokio::time::timeout(Duration::from_secs(2), receiver.recv())
+                tokio::time::timeout(Duration::from_secs(2), result_receiver.recv())
                     .await
                     .unwrap()
                     .is_none()

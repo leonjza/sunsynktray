@@ -180,6 +180,7 @@ fn quit(_: &Quit, cx: &mut App) {
         cx.background_executor()
             .spawn(async { crate::storage::credentials::flush() })
             .await;
+        crate::app::shutdown_runtime();
         cx.update(|app| app.quit());
     })
     .detach();

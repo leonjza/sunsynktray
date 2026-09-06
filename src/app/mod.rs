@@ -9,11 +9,13 @@ use std::{
 mod controller;
 mod history;
 mod polling;
+mod runtime;
 mod session;
 mod state;
 mod view;
 mod window;
 pub(crate) use controller::{MonitorController, MonitorControllerGlobal};
+pub(crate) use runtime::shutdown as shutdown_runtime;
 pub(crate) use state::{
     ConnectionState, HistoryPointIndex, HistorySnapshot, MonitorState, MonitorStateGlobal, Screen,
     TrayMetric,

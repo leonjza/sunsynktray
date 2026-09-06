@@ -9,6 +9,7 @@ jobs:
   smoke:
     runs-on: ubuntu-latest
     env:
+      # Disposable demo account; these are intentionally not production credentials.
       SUNSYNK_USERNAME: virtual@e-linter.com
       SUNSYNK_PASSWORD: elinter@0512
     steps:

@@ -156,7 +156,7 @@ impl SunsynkClient {
                 .await
                 .with_context(|| format!("sending {method} {path}"))?;
             if is_transient_status(response.status()) && attempt < 2 {
-                tokio::time::sleep(Duration::from_millis(250 * 2_u64.pow(attempt))).await;
+                tokio::time::sleep(retry_delay(response.headers(), attempt)).await;
                 continue;
             }
             if response.status() == reqwest::StatusCode::UNAUTHORIZED {
@@ -177,6 +177,26 @@ impl SunsynkClient {
 
 fn is_transient_status(status: reqwest::StatusCode) -> bool {
     status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
+}
+
+fn retry_delay(headers: &reqwest::header::HeaderMap, attempt: u32) -> Duration {
+    headers
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(parse_retry_after)
+        .map(Duration::from_secs)
+        .unwrap_or_else(|| Duration::from_millis(250 * 2_u64.pow(attempt)))
+        .min(Duration::from_secs(30))
+}
+
+fn parse_retry_after(value: &str) -> Option<u64> {
+    if let Ok(seconds) = value.parse::<u64>() {
+        return Some(seconds);
+    }
+
+    let date = chrono::DateTime::parse_from_rfc2822(value).ok()?;
+    let seconds = (date.with_timezone(&chrono::Utc) - chrono::Utc::now()).num_seconds();
+    Some(seconds.max(0) as u64)
 }
 
 fn response_indicates_expired(response: &Value) -> bool {
@@ -201,7 +221,8 @@ fn response_indicates_expired(response: &Value) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::is_transient_status;
+    use super::{is_transient_status, parse_retry_after, retry_delay, Duration};
+    use reqwest::header::{HeaderMap, HeaderValue, RETRY_AFTER};
 
     #[test]
     fn retries_rate_limits_and_server_failures_only() {
@@ -209,5 +230,22 @@ mod tests {
         assert!(is_transient_status(reqwest::StatusCode::BAD_GATEWAY));
         assert!(!is_transient_status(reqwest::StatusCode::BAD_REQUEST));
         assert!(!is_transient_status(reqwest::StatusCode::UNAUTHORIZED));
+    }
+
+    #[test]
+    fn retry_after_is_honoured_and_bounded() {
+        let mut headers = HeaderMap::new();
+        headers.insert(RETRY_AFTER, HeaderValue::from_static("10"));
+        assert_eq!(retry_delay(&headers, 0), Duration::from_secs(10));
+        headers.insert(RETRY_AFTER, HeaderValue::from_static("60"));
+        assert_eq!(retry_delay(&headers, 0), Duration::from_secs(30));
+        headers.insert(RETRY_AFTER, HeaderValue::from_static("invalid"));
+        assert_eq!(retry_delay(&headers, 1), Duration::from_millis(500));
+    }
+
+    #[test]
+    fn retry_after_accepts_http_dates() {
+        assert!(parse_retry_after("Wed, 21 Oct 2099 07:28:00 GMT").is_some());
+        assert_eq!(parse_retry_after("Wed, 21 Oct 2015 07:28:00 GMT"), Some(0));
     }
 }

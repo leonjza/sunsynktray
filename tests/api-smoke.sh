@@ -10,6 +10,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# These fallback values are a disposable demo account used only for the API
+# smoke test. Production credentials must be supplied through the environment.
 USERNAME="${SUNSYNK_USERNAME:-virtual@e-linter.com}"
 PASSWORD="${SUNSYNK_PASSWORD:-elinter@0512}"
 BASE_URL="${SUNSYNK_BASE_URL:-https://api.sunsynk.net}"

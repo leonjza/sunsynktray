@@ -57,6 +57,15 @@ fn lock_is_unavailable(error: &std::io::Error) -> bool {
 }
 
 fn lock_path() -> PathBuf {
+    #[cfg(unix)]
+    {
+        if let Some(runtime_dir) = std::env::var_os("XDG_RUNTIME_DIR") {
+            return PathBuf::from(runtime_dir).join("SunTray.instance.lock");
+        }
+        if let Some(home_dir) = std::env::var_os("HOME") {
+            return PathBuf::from(home_dir).join(".suntray.instance.lock");
+        }
+    }
     std::env::temp_dir().join("SunTray.instance.lock")
 }
 

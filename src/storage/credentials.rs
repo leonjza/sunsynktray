@@ -22,6 +22,8 @@ pub(crate) struct SavedCredentials {
     pub(crate) refresh_seconds: Option<u64>,
     #[serde(default)]
     pub(crate) tray_metric: Option<String>,
+    #[serde(default)]
+    pub(crate) cached_snapshot: Option<crate::domain::EnergySnapshot>,
 }
 
 impl fmt::Debug for SavedCredentials {
@@ -79,11 +81,11 @@ fn update_record(
         .lock()
         .unwrap_or_else(|error| error.into_inner());
     let mut record = load_unlocked()?.ok_or_else(|| anyhow::anyhow!("no saved credentials"))?;
-    let previous_email = record.email.clone();
-    if let Some(email) = email {
-        record.email = email.to_owned();
+    if let Some(email) = email.filter(|email| record.email != *email) {
+        tracing::debug!(%email, "ignoring stale credential update for another account");
+        return Ok(());
     }
-    if update(&mut record) || record.email != previous_email {
+    if update(&mut record) {
         save_record_unlocked(&record)
     } else {
         Ok(())
@@ -119,6 +121,10 @@ pub(crate) fn save(
                 .as_ref()
                 .and_then(|saved| saved.tray_metric.clone())
         }),
+        cached_snapshot: existing
+            .as_ref()
+            .and_then(|saved| (saved.email == email).then(|| saved.cached_snapshot.clone()))
+            .flatten(),
     })
 }
 
@@ -133,29 +139,53 @@ pub(crate) fn save_selection(email: &str, serial: &str) -> Result<()> {
     })
 }
 
-pub(crate) fn save_tray_metric(metric: Option<&str>) -> Result<()> {
+pub(crate) fn save_tray_metric(email: &str, metric: Option<&str>) -> Result<()> {
+    update_record(Some(email), |record| {
+        if record.tray_metric.as_deref() == metric {
+            false
+        } else {
+            record.tray_metric = metric.map(str::to_owned);
+            true
+        }
+    })
+}
+
+pub(crate) fn save_refresh_token(
+    email: &str,
+    expected_token: Option<&str>,
+    token: &str,
+) -> Result<()> {
     let _guard = keychain_lock()
         .lock()
         .unwrap_or_else(|error| error.into_inner());
     let mut record = load_unlocked()?.ok_or_else(|| anyhow::anyhow!("no saved credentials"))?;
-    if record.tray_metric.as_deref() == metric {
+    if record.email != email {
+        tracing::debug!(%email, "ignoring stale refresh-token update for another account");
         return Ok(());
     }
-    record.tray_metric = metric.map(str::to_owned);
+    if record.refresh_token.as_deref() != expected_token {
+        tracing::debug!("ignoring stale refresh-token update");
+        return Ok(());
+    }
+    if record.refresh_token.as_deref() == Some(token) {
+        return Ok(());
+    }
+    record.refresh_token = Some(token.to_owned());
     save_record_unlocked(&record)
 }
 
-pub(crate) fn save_refresh_token(email: &str, token: &str) -> Result<()> {
-    let _guard = keychain_lock()
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-    let mut record = load_unlocked()?.ok_or_else(|| anyhow::anyhow!("no saved credentials"))?;
-    if record.email == email && record.refresh_token.as_deref() == Some(token) {
-        return Ok(());
-    }
-    record.email = email.to_owned();
-    record.refresh_token = Some(token.to_owned());
-    save_record_unlocked(&record)
+pub(crate) fn save_cached_data(
+    email: &str,
+    snapshot: &crate::domain::EnergySnapshot,
+) -> Result<()> {
+    update_record(Some(email), |record| {
+        let snapshot_changed = record.cached_snapshot.as_ref() != Some(snapshot);
+        if !snapshot_changed {
+            return false;
+        }
+        record.cached_snapshot = Some(snapshot.clone());
+        true
+    })
 }
 
 pub(crate) fn save_refresh_seconds(email: &str, refresh_seconds: u64) -> Result<()> {
@@ -179,6 +209,7 @@ enum PersistenceKey {
     TrayMetric,
     RefreshToken,
     RefreshSeconds,
+    CachedData,
     Flush,
 }
 
@@ -198,7 +229,7 @@ impl PersistenceQueue {
             .pending
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        if key != PersistenceKey::Flush {
+        if key != PersistenceKey::Flush && key != PersistenceKey::RefreshToken {
             pending.retain(|item| item.key != key);
         }
         pending.push_back(PersistenceTask { key, task });
@@ -280,17 +311,21 @@ pub(crate) fn save_selection_async(email: String, serial: String) {
     });
 }
 
-pub(crate) fn save_tray_metric_async(metric: Option<String>) {
+pub(crate) fn save_tray_metric_async(email: String, metric: Option<String>) {
     enqueue_persistence(PersistenceKey::TrayMetric, move || {
-        if let Err(error) = save_tray_metric(metric.as_deref()) {
+        if let Err(error) = save_tray_metric(&email, metric.as_deref()) {
             tracing::warn!(%error, "could not save tray metric");
         }
     });
 }
 
-pub(crate) fn save_refresh_token_async(email: String, token: String) {
+pub(crate) fn save_refresh_token_async(
+    email: String,
+    expected_token: Option<String>,
+    token: String,
+) {
     enqueue_persistence(PersistenceKey::RefreshToken, move || {
-        if let Err(error) = save_refresh_token(&email, &token) {
+        if let Err(error) = save_refresh_token(&email, expected_token.as_deref(), &token) {
             tracing::warn!(%error, "could not persist refreshed SunSynk token");
         }
     });
@@ -300,6 +335,14 @@ pub(crate) fn save_refresh_seconds_async(email: String, refresh_seconds: u64) {
     enqueue_persistence(PersistenceKey::RefreshSeconds, move || {
         if let Err(error) = save_refresh_seconds(&email, refresh_seconds) {
             tracing::warn!(%error, "could not persist refresh interval");
+        }
+    });
+}
+
+pub(crate) fn save_cached_data_async(email: String, snapshot: crate::domain::EnergySnapshot) {
+    enqueue_persistence(PersistenceKey::CachedData, move || {
+        if let Err(error) = save_cached_data(&email, &snapshot) {
+            tracing::warn!(%error, "could not persist cached SunSynk data");
         }
     });
 }
@@ -342,13 +385,17 @@ mod tests {
         };
         queue.enqueue(PersistenceKey::Selection, Box::new(|| {}));
         queue.enqueue(PersistenceKey::Selection, Box::new(|| {}));
+        queue.enqueue(PersistenceKey::RefreshToken, Box::new(|| {}));
+        queue.enqueue(PersistenceKey::RefreshToken, Box::new(|| {}));
         queue.enqueue(PersistenceKey::Flush, Box::new(|| {}));
         queue.enqueue(PersistenceKey::Flush, Box::new(|| {}));
 
         let pending = queue.pending.lock().unwrap();
-        assert_eq!(pending.len(), 3);
+        assert_eq!(pending.len(), 5);
         assert_eq!(pending[0].key, PersistenceKey::Selection);
-        assert_eq!(pending[1].key, PersistenceKey::Flush);
-        assert_eq!(pending[2].key, PersistenceKey::Flush);
+        assert_eq!(pending[1].key, PersistenceKey::RefreshToken);
+        assert_eq!(pending[2].key, PersistenceKey::RefreshToken);
+        assert_eq!(pending[3].key, PersistenceKey::Flush);
+        assert_eq!(pending[4].key, PersistenceKey::Flush);
     }
 }

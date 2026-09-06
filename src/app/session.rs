@@ -3,8 +3,9 @@ use crate::{
     storage::credentials,
     sunsynk::SunsynkClient,
 };
+use futures_util::future::{select, Either};
 use gpui_kit::*;
-use std::{sync::atomic::Ordering, thread};
+use std::sync::atomic::Ordering;
 
 use super::{ConnectionState, MonitorController, TrayMetric};
 
@@ -26,6 +27,9 @@ impl MonitorController {
         if let Some(cancel) = self.connect_cancel.take() {
             let _ = cancel.send(());
         }
+        if let Some(task) = self.connect_task.take() {
+            task.abort();
+        }
         self.connect_epoch.store(generation, Ordering::SeqCst);
         self.activity = "Logging in…".into();
         self.next_refresh_in = None;
@@ -38,6 +42,15 @@ impl MonitorController {
                 });
         if credentials_changed {
             self.refresh_token = None;
+            self.state.clear_cached_data();
+            self.has_cached_data = false;
+            self.inverters.clear();
+            self.selected_serial = None;
+            self.history_date = chrono::Local::now().date_naive();
+            self.history_is_manual = false;
+            self.history_previous_date = None;
+            self.connection = ConnectionState::Connecting;
+            self.update_tray(cx);
         }
         let saved_token = self
             .credentials
@@ -51,103 +64,94 @@ impl MonitorController {
         let settings = self.state.settings.clone();
         let connect_epoch = self.connect_epoch.clone();
         let progress_sender = sender.clone();
-        let (cancel_sender, mut cancel_receiver) = tokio::sync::oneshot::channel();
+        let (cancel_sender, cancel_receiver) = tokio::sync::oneshot::channel();
         self.connect_cancel = Some(cancel_sender);
-        thread::spawn(move || {
-            let result = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .map_err(|e| anyhow::anyhow!(e))
-                .and_then(|runtime| {
-                    runtime.block_on(async move {
-                        let operation = async move {
-                            let mut client = SunsynkClient::new(
-                                settings.api_base_url,
-                                email.clone(),
-                                password.clone(),
-                            )?
-                            .with_refresh_token(saved_token)
-                            .with_progress(move |message| {
-                                let _ = progress_sender.try_send(ConnectResult::Progress {
-                                    generation,
-                                    message: message.to_owned(),
-                                });
-                            });
-                            let inverters = client.list_inverters().await?;
-                            let selected = saved_selection
-                                .and_then(|serial| {
-                                    inverters
-                                        .iter()
-                                        .find(|i| i.serial == serial)
-                                        .map(|i| i.serial.clone())
-                                })
-                                .or_else(|| {
-                                    inverters
-                                        .first()
-                                        .filter(|i| !i.serial.is_empty())
-                                        .map(|i| i.serial.clone())
-                                });
-                            let selected_plant_id = selected.as_ref().and_then(|serial| {
-                                inverters
-                                    .iter()
-                                    .find(|inverter| &inverter.serial == serial)
-                                    .and_then(|inverter| inverter.plant_id)
-                            });
-                            let plant_data = match (selected.as_deref(), selected_plant_id) {
-                                (Some(serial), Some(plant_id)) => {
-                                    Some(client.refresh_plant(plant_id, serial).await?)
-                                }
-                                _ => None,
-                            };
-                            let (snapshot, history) = plant_data
-                                .map(|(snapshot, history)| (Some(snapshot), history))
-                                .unwrap_or((None, None));
-                            if connect_epoch.load(Ordering::SeqCst) != generation {
-                                return Err(anyhow::anyhow!("login superseded by a newer attempt"));
-                            }
-                            Ok::<_, anyhow::Error>((
-                                inverters,
-                                snapshot,
-                                selected,
-                                client.refresh_token().map(str::to_owned),
-                                history,
-                            ))
-                        };
-                        tokio::pin!(operation);
-                        loop {
-                            if cancel_receiver.try_recv().is_ok() {
-                                break Err(anyhow::anyhow!("login superseded by a newer attempt"));
-                            }
-                            match tokio::time::timeout(
-                                std::time::Duration::from_millis(100),
-                                &mut operation,
-                            )
-                            .await
-                            {
-                                Ok(result) => break result,
-                                Err(_) => continue,
-                            }
-                        }
-                    })
+        let operation = async move {
+            let mut client =
+                SunsynkClient::new(settings.api_base_url, email.clone(), password.clone())?
+                    .with_refresh_token(saved_token)
+                    .with_progress(move |message| {
+                        let _ = progress_sender.try_send(ConnectResult::Progress {
+                            generation,
+                            message: message.to_owned(),
+                        });
+                    });
+            let inverters = client.list_inverters().await?;
+            let selected = saved_selection
+                .and_then(|serial| {
+                    inverters
+                        .iter()
+                        .find(|i| i.serial == serial)
+                        .map(|i| i.serial.clone())
+                })
+                .or_else(|| {
+                    inverters
+                        .first()
+                        .filter(|i| !i.serial.is_empty())
+                        .map(|i| i.serial.clone())
                 });
-            let _ = sender.blocking_send(match result {
-                Ok((inverters, snapshot, selected, refresh_token, history)) => {
-                    ConnectResult::Connected {
-                        generation,
-                        inverters,
-                        snapshot,
-                        selected_serial: selected,
-                        refresh_token,
-                        history,
-                    }
-                }
-                Err(error) => ConnectResult::Failure {
-                    generation,
-                    error: error.to_string(),
-                    retry_in: None,
-                },
+            let selected_plant_id = selected.as_ref().and_then(|serial| {
+                inverters
+                    .iter()
+                    .find(|inverter| &inverter.serial == serial)
+                    .and_then(|inverter| inverter.plant_id)
             });
-        });
+            let plant_data = match (selected.as_deref(), selected_plant_id) {
+                (Some(serial), Some(plant_id)) => {
+                    Some(client.refresh_plant(plant_id, serial).await?)
+                }
+                _ => None,
+            };
+            let (snapshot, history) = plant_data
+                .map(|(snapshot, history)| (Some(snapshot), history))
+                .unwrap_or((None, None));
+            if connect_epoch.load(Ordering::SeqCst) != generation {
+                return Err(anyhow::anyhow!("login superseded by a newer attempt"));
+            }
+            Ok::<_, anyhow::Error>((
+                inverters,
+                snapshot,
+                selected,
+                client.refresh_token().map(str::to_owned),
+                history,
+            ))
+        };
+        let task_sender = sender.clone();
+        match crate::app::runtime::spawn(async move {
+            tokio::pin!(operation);
+            let result = match select(Box::pin(operation), Box::pin(cancel_receiver)).await {
+                Either::Left((result, _)) => result,
+                Either::Right(_) => Err(anyhow::anyhow!("login superseded by a newer attempt")),
+            };
+            let _ = task_sender
+                .send(match result {
+                    Ok((inverters, snapshot, selected, refresh_token, history)) => {
+                        ConnectResult::Connected {
+                            generation,
+                            inverters,
+                            snapshot,
+                            selected_serial: selected,
+                            refresh_token,
+                            history,
+                        }
+                    }
+                    Err(error) => ConnectResult::Failure {
+                        generation,
+                        error: error.to_string(),
+                        retry_in: None,
+                    },
+                })
+                .await;
+        }) {
+            Ok(task) => self.connect_task = Some(task),
+            Err(error) => {
+                let _ = sender.try_send(ConnectResult::Failure {
+                    generation,
+                    error: error.clone(),
+                    retry_in: None,
+                });
+            }
+        }
         let entity = cx.entity().clone();
         cx.spawn(async move |_, cx| {
             while let Some(result) = receiver.recv().await {
@@ -165,6 +169,7 @@ impl MonitorController {
                                 return;
                             }
                             dashboard.connect_cancel = None;
+                            dashboard.connect_task = None;
                             dashboard.fetching = false;
                             dashboard.selected_serial = selected.clone();
                             dashboard.inverters = inverters;
@@ -192,6 +197,8 @@ impl MonitorController {
                             }
                             dashboard.connection = if has_snapshot {
                                 ConnectionState::Connected
+                            } else if dashboard.has_cached_data {
+                                ConnectionState::Stale
                             } else {
                                 ConnectionState::Error(
                                     "Account connected, but no live inverter data is available yet."
@@ -247,9 +254,13 @@ impl MonitorController {
                                 return;
                             }
                             dashboard.connect_cancel = None;
+                            dashboard.connect_task = None;
                             let failure_activity = format!("Login failed: {error}");
-                            dashboard.connection = ConnectionState::Error(error);
-                            dashboard.inverters.clear();
+                            dashboard.connection = if dashboard.has_cached_data {
+                                ConnectionState::Stale
+                            } else {
+                                ConnectionState::Error(error.clone())
+                            };
                             dashboard.next_refresh_in = None;
                             dashboard.activity = failure_activity;
                             dashboard.fetching = false;

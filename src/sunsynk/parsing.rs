@@ -16,6 +16,11 @@ pub(super) fn data(value: &Value) -> Result<&Map<String, Value>> {
 }
 
 pub(super) fn flow_object(value: &Value) -> Option<&Map<String, Value>> {
+    if let Some(data) = value.get("data") {
+        if let Some(flow) = flow_object(data) {
+            return Some(flow);
+        }
+    }
     if let Some(items) = value.as_array() {
         return items.iter().find_map(flow_object);
     }
@@ -57,6 +62,12 @@ pub(super) fn snapshot_from_flow(flow: &Map<String, Value>, serial: &str) -> Ene
 }
 
 pub(super) fn history_series(value: &Value) -> Vec<HistorySeries> {
+    if let Some(data) = value.get("data") {
+        let series = history_series(data);
+        if !series.is_empty() {
+            return series;
+        }
+    }
     let Some(object) = value.as_object() else {
         return value
             .as_array()

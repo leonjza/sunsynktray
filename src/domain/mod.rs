@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub(crate) struct EnergySnapshot {
     pub(crate) inverter_sn: String,
     pub(crate) pv_watts: f64,
@@ -18,13 +18,13 @@ pub(crate) struct EnergySnapshot {
     pub(crate) grid_to: Option<bool>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub(crate) struct HistoryPoint {
     pub(crate) time: String,
     pub(crate) watts: f64,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub(crate) struct HistorySeries {
     pub(crate) label: String,
     pub(crate) points: Vec<HistoryPoint>,
