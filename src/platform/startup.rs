@@ -16,7 +16,7 @@ mod platform {
     use super::*;
     use anyhow::Context;
     use std::io::ErrorKind;
-    use std::path::PathBuf;
+    use std::path::Path;
     use winreg::{enums::HKEY_CURRENT_USER, RegKey};
 
     const RUN_KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
@@ -63,7 +63,7 @@ mod platform {
         Ok(())
     }
 
-    fn quote_windows_path(path: &PathBuf) -> String {
+    fn quote_windows_path(path: &Path) -> String {
         format!("\"{}\"", path.to_string_lossy().replace('"', "\\\""))
     }
 
@@ -75,7 +75,7 @@ mod platform {
         #[test]
         fn quotes_paths_with_spaces() {
             assert_eq!(
-                quote_windows_path(Path::new(r"C:\Program Files\SunTray.exe").into()),
+                quote_windows_path(Path::new(r"C:\Program Files\SunTray.exe")),
                 r#""C:\Program Files\SunTray.exe""#
             );
         }
