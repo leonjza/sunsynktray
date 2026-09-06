@@ -24,7 +24,7 @@ impl InstanceLock {
 
         match file.try_lock_exclusive() {
             Ok(()) => Ok(Some(Self { file })),
-            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
+            Err(error) if lock_is_unavailable(&error) => Ok(None),
             Err(error) => Err(error)
                 .with_context(|| format!("could not lock instance file {}", path.display())),
         }
@@ -34,6 +34,25 @@ impl InstanceLock {
 impl Drop for InstanceLock {
     fn drop(&mut self) {
         let _ = self.file.unlock();
+    }
+}
+
+fn lock_is_unavailable(error: &std::io::Error) -> bool {
+    if error.kind() == std::io::ErrorKind::WouldBlock {
+        return true;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // Windows reports an already-held byte-range/file lock as either
+        // ERROR_LOCK_VIOLATION or ERROR_SHARING_VIOLATION rather than
+        // ErrorKind::WouldBlock.
+        matches!(error.raw_os_error(), Some(32 | 33))
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        false
     }
 }
 
