@@ -54,7 +54,6 @@ jobs:
         shell: pwsh
         env:
           RUSTFLAGS: -C target-feature=+crt-static
-          CARGO_NET_OFFLINE: true
 
       - name: Package portable ZIP
         run: |
@@ -126,8 +125,6 @@ jobs:
 
       - name: Build macOS app bundle
         run: bash packaging/macos/package.sh aarch64-apple-darwin
-        env:
-          CARGO_NET_OFFLINE: true
 
       - name: Build macOS PKG installer
         run: |
