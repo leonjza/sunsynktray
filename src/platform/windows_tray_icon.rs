@@ -140,7 +140,7 @@ fn render_mask(size: i32, text: &str, dx: i32, dy: i32) -> Result<Vec<u8>, Strin
             &mut wide,
             &mut rect,
             DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
-        );
+        )
     };
     if drawn == 0 {
         unsafe {
