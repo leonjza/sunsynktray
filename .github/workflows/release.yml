@@ -121,9 +121,6 @@ jobs:
       - name: Build macOS app bundle
         run: cargo packager --release --target aarch64-apple-darwin --formats app
 
-      - name: Ad-hoc sign macOS app bundle
-        run: codesign --force --deep --sign - --timestamp=none dist/SunTray.app
-
       - name: Build macOS PKG installer
         run: |
           version="${GITHUB_REF_NAME#v}"
@@ -140,8 +137,14 @@ jobs:
           test -x dist/SunTray.app/Contents/MacOS/suntray
           echo "Verifying bundle identifier"
           /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' dist/SunTray.app/Contents/Info.plist | grep -qx 'com.suntray.app'
+          echo "Verifying PKG metadata"
+          pkg="dist/SunTray-${GITHUB_REF_NAME#v}-macos-arm64.pkg"
+          expanded="$RUNNER_TEMP/suntray-pkg-expanded"
+          if [ -e "$expanded" ]; then rm -rf "$expanded"; fi
+          pkgutil --expand "$pkg" "$expanded"
+          grep -q 'identifier="com.suntray.app"' "$expanded/PackageInfo"
           echo "Verifying PKG payload"
-          pkgutil --payload-files "dist/SunTray-${GITHUB_REF_NAME#v}-macos-arm64.pkg" | grep -Eq '(^|/)Applications/SunTray.app/Contents/MacOS/suntray$'
+          pkgutil --payload-files "$pkg" | grep -Eq '^\./SunTray\.app/Contents/MacOS/suntray$'
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
