@@ -27,6 +27,7 @@ fn main() -> Result<()> {
         return diagnostics::run(&args, settings);
     }
     let Some(_instance_lock) = platform::InstanceLock::acquire()? else {
+        eprintln!("SunTray is already running.");
         tracing::info!("another SunTray instance is already running");
         return Ok(());
     };

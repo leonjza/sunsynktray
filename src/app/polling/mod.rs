@@ -19,7 +19,7 @@ pub(super) fn should_queue_command(command: &PollCommand, fetching: bool) -> boo
 }
 
 impl MonitorController {
-    pub(crate) fn apply_snapshot(
+    pub(crate) fn apply_live_data(
         &mut self,
         snapshot: EnergySnapshot,
         refresh_token: Option<String>,
@@ -38,12 +38,25 @@ impl MonitorController {
                 credentials::save_refresh_token_async(email.clone(), token.to_owned());
             }
         }
-        if let Some(history) = history {
-            self.state.set_history(history);
+        if !self.history_is_manual {
+            if let Some(history) = history {
+                self.state.set_history(history);
+            }
         }
         self.connection = ConnectionState::Connected;
-        self.fetching = false;
         self.update_tray(cx);
+    }
+
+    pub(crate) fn apply_snapshot(
+        &mut self,
+        snapshot: EnergySnapshot,
+        refresh_token: Option<String>,
+        history: Option<Vec<HistorySeries>>,
+        cx: &mut Context<Self>,
+    ) {
+        self.apply_live_data(snapshot, refresh_token, history, cx);
+        self.fetching = false;
+        self.refresh_generation = self.refresh_generation.wrapping_add(1);
         self.next_refresh_in = Some(self.refresh_seconds);
         self.activity = format!(
             "Waiting for next refresh · next refresh in {}s",
@@ -55,6 +68,7 @@ impl MonitorController {
         self.state.set_history(history);
         self.history_previous_date = None;
         self.fetching = false;
+        self.refresh_generation = self.refresh_generation.wrapping_add(1);
         self.next_refresh_in = Some(self.refresh_seconds);
         self.activity = format!(
             "Waiting for next refresh · next refresh in {}s",
@@ -65,6 +79,7 @@ impl MonitorController {
     pub(crate) fn apply_stopped(&mut self, error: String, cx: &mut Context<Self>) {
         self.polling = false;
         self.poll_sender = None;
+        self.poll_cancel = None;
         self.fetching = false;
         self.connection = if self.has_cached_data {
             ConnectionState::Stale
@@ -102,7 +117,8 @@ impl MonitorController {
             return;
         };
         self.polling = true;
-        let (command_sender, mut receiver) = worker::spawn(protocol::PollConfig {
+        let (command_sender, cancel_sender, mut receiver) = worker::spawn(protocol::PollConfig {
+            generation: poll_generation,
             base_url: details.0,
             email,
             password,
@@ -112,60 +128,75 @@ impl MonitorController {
             interval_seconds: interval,
         });
         self.poll_sender = Some(command_sender);
+        self.poll_cancel = Some(cancel_sender);
         cx.spawn(async move |_, cx| {
             while let Some(result) = receiver.recv().await {
                 if entity
-                    .update(cx, |dashboard, cx| {
-                        if dashboard.poll_generation != poll_generation {
+                    .update(cx, |controller, cx| {
+                        if controller.poll_generation != poll_generation {
                             return;
                         }
                         match result {
                             ConnectResult::PollStarted => {
-                                dashboard.fetching = true;
-                                dashboard.activity = "Fetching new data…".into();
+                                controller.fetching = true;
+                                controller.activity = "Fetching new data…".into();
                             }
-                            ConnectResult::Progress { message } => {
-                                dashboard.fetching = true;
-                                dashboard.activity = message;
+                            ConnectResult::Progress {
+                                generation,
+                                message,
+                            } => {
+                                if controller.poll_generation != generation {
+                                    return;
+                                }
+                                controller.fetching = true;
+                                controller.activity = message;
                             }
                             ConnectResult::History(history) => {
-                                dashboard.apply_history(history);
+                                controller.apply_history(history);
                             }
                             ConnectResult::Snapshot {
                                 snapshot,
                                 refresh_token,
                                 history,
                             } => {
-                                dashboard.apply_snapshot(snapshot, refresh_token, history, cx);
+                                controller.apply_snapshot(snapshot, refresh_token, history, cx);
                             }
                             ConnectResult::Failure {
-                                error, retry_in, ..
+                                generation,
+                                error,
+                                retry_in,
                             } => {
-                                dashboard.connection = if dashboard.has_cached_data {
+                                if controller.poll_generation != generation {
+                                    return;
+                                }
+                                controller.connection = if controller.has_cached_data {
                                     ConnectionState::Stale
                                 } else {
                                     ConnectionState::Error(error)
                                 };
-                                dashboard.next_refresh_in = retry_in;
-                                dashboard.activity = retry_in
+                                controller.refresh_generation =
+                                    controller.refresh_generation.wrapping_add(1);
+                                controller.next_refresh_in = retry_in;
+                                controller.activity = retry_in
                                     .map(|seconds| format!("Refresh failed · retry in {seconds}s"))
                                     .unwrap_or_else(|| "Refresh failed".into());
-                                dashboard.fetching = false;
-                                dashboard.update_tray(cx);
+                                controller.fetching = false;
+                                controller.update_tray(cx);
                             }
                             ConnectResult::HistoryFailure { date, error } => {
-                                if dashboard.history_date == date {
-                                    if let Some(previous) = dashboard.history_previous_date.take() {
-                                        dashboard.history_date = previous;
-                                        dashboard.history_is_manual = dashboard.history_date
+                                if controller.history_date == date {
+                                    if let Some(previous) = controller.history_previous_date.take()
+                                    {
+                                        controller.history_date = previous;
+                                        controller.history_is_manual = controller.history_date
                                             != chrono::Local::now().date_naive();
                                     }
                                 }
-                                dashboard.fetching = false;
-                                dashboard.activity = format!("History unavailable: {error}");
+                                controller.fetching = false;
+                                controller.activity = format!("History unavailable: {error}");
                             }
                             ConnectResult::Stopped { error } => {
-                                dashboard.apply_stopped(error, cx);
+                                controller.apply_stopped(error, cx);
                             }
                             ConnectResult::Connected { .. } => {}
                         }
@@ -176,6 +207,12 @@ impl MonitorController {
                     break;
                 }
             }
+            let _ = entity.update(cx, |controller, cx| {
+                if controller.poll_generation == poll_generation && controller.polling {
+                    controller.apply_stopped("polling worker exited unexpectedly".into(), cx);
+                    cx.notify();
+                }
+            });
         })
         .detach();
     }
@@ -185,7 +222,11 @@ impl MonitorController {
         if let Some(sender) = self.poll_sender.take() {
             let _ = sender.try_send(PollCommand::Stop);
         }
+        if let Some(cancel) = self.poll_cancel.take() {
+            let _ = cancel.send(());
+        }
         self.polling = false;
+        self.fetching = false;
     }
 
     pub(crate) fn select_inverter(&mut self, serial: String, cx: &mut Context<Self>) {
@@ -195,22 +236,33 @@ impl MonitorController {
         if self.selected_serial.as_deref() == Some(serial.as_str()) {
             return;
         }
-        self.selected_serial = Some(serial.clone());
-        if let Some((email, _)) = &self.credentials {
-            credentials::save_selection_async(email.clone(), serial.clone());
-        }
-        self.activity = "Fetching new data…".into();
         let plant_id = self
             .inverters
             .iter()
             .find(|inverter| inverter.serial == serial)
             .and_then(|inverter| inverter.plant_id);
-        self.send_poll_command(PollCommand::Select(serial, plant_id), cx);
+        if self.polling
+            && !self.send_poll_command(PollCommand::Select(serial.clone(), plant_id), cx)
+        {
+            self.activity = "Polling is busy; try selecting the inverter again".into();
+            cx.notify();
+            return;
+        }
+        self.selected_serial = Some(serial.clone());
+        if let Some((email, _)) = &self.credentials {
+            credentials::save_selection_async(email.clone(), serial);
+        }
+        if !self.polling {
+            self.activity = "Inverter selected".into();
+        }
         cx.notify();
     }
 
     pub(crate) fn refresh_now(&mut self, cx: &mut Context<Self>) {
-        self.send_poll_command(PollCommand::Refresh, cx);
+        if !self.send_poll_command(PollCommand::Refresh, cx) && !self.fetching {
+            self.activity = "Polling is unavailable".into();
+            cx.notify();
+        }
     }
 
     pub(crate) fn change_history_day(&mut self, offset: i64, cx: &mut Context<Self>) {

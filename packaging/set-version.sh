@@ -38,7 +38,30 @@ update_plist_versions() {
     mv "$output" "$input"
 }
 
+update_lockfile_version() {
+    local input="$1"
+    local output="${input}.tmp"
+
+    awk -v version="$VERSION" '
+        $0 == "name = \"suntray\"" {
+            print
+            if (getline <= 0) exit 1
+            if ($0 !~ /^version = "/) exit 1
+            sub(/"[^"]*"$/, "\"" version "\"")
+            updated = 1
+            print
+            next
+        }
+        { print }
+        END {
+            if (!updated) exit 1
+        }
+    ' "$input" > "$output"
+    mv "$output" "$input"
+}
+
 update_cargo_version "$PROJECT_ROOT/Cargo.toml"
+update_lockfile_version "$PROJECT_ROOT/Cargo.lock"
 update_plist_versions "$PROJECT_ROOT/packaging/macos/Info.plist"
 
 echo "Set application version to ${VERSION}"

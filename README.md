@@ -16,6 +16,12 @@ cargo install cargo-packager --locked
 
 Build the release binary for the target platform, then run `cargo packager --release`. macOS produces the application bundle; the release workflow wraps it in a native `.pkg` installer. Windows produces a current-user NSIS installer, and the release workflow also publishes a portable Windows ZIP.
 
+On macOS, use `bash packaging/macos/package.sh aarch64-apple-darwin` to build
+the application bundle with its bundled `SunTrayStartup.app` login item. The
+startup setting registers that helper; it
+login item. That small helper launches the main app with `--startup`, so login
+launches remain hidden while normal launches still open the dashboard.
+
 ## Core dependency notes
 
 SunTray was migrated to `gpui-kit` 0.6 and its matching `gpui-pre` platform

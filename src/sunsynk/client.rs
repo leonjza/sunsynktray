@@ -81,7 +81,11 @@ impl SunsynkClient {
     ) -> Result<Value> {
         self.ensure_authenticated().await?;
         match self.get_authenticated(path, params).await {
-            Err(error) if error.downcast_ref::<AuthenticationExpired>().is_some() => {
+            Err(error)
+                if error
+                    .chain()
+                    .any(|cause| cause.downcast_ref::<AuthenticationExpired>().is_some()) =>
+            {
                 self.access_token = None;
                 self.ensure_authenticated()
                     .await
@@ -110,6 +114,9 @@ impl SunsynkClient {
             .await
             .with_context(|| format!("GET {path}"))?;
         if response.get("success").and_then(Value::as_bool) != Some(true) {
+            if response_indicates_expired(&response) {
+                return Err(anyhow!(AuthenticationExpired));
+            }
             bail!(
                 "GET {path}: {}",
                 response
@@ -141,20 +148,66 @@ impl SunsynkClient {
         if let Some(json) = json {
             request = request.json(json);
         }
-        let response = request
-            .send()
-            .await
-            .with_context(|| format!("sending {method} {path}"))?;
-        if response.status() == reqwest::StatusCode::UNAUTHORIZED {
-            return Err(anyhow!(AuthenticationExpired));
+        for attempt in 0..3 {
+            let response = request
+                .try_clone()
+                .ok_or_else(|| anyhow!("could not clone SunSynk request"))?
+                .send()
+                .await
+                .with_context(|| format!("sending {method} {path}"))?;
+            if is_transient_status(response.status()) && attempt < 2 {
+                tokio::time::sleep(Duration::from_millis(250 * 2_u64.pow(attempt))).await;
+                continue;
+            }
+            if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+                return Err(anyhow!(AuthenticationExpired));
+            }
+            let response = response
+                .error_for_status()
+                .with_context(|| format!("SunSynk returned an HTTP error for {method} {path}"))?;
+            let body: Value = response
+                .json()
+                .await
+                .with_context(|| format!("decoding SunSynk response for {method} {path}"))?;
+            return Ok(body);
         }
-        let response = response
-            .error_for_status()
-            .with_context(|| format!("SunSynk returned an HTTP error for {method} {path}"))?;
-        let body: Value = response
-            .json()
-            .await
-            .with_context(|| format!("decoding SunSynk response for {method} {path}"))?;
-        Ok(body)
+        unreachable!("bounded HTTP retry loop must return")
+    }
+}
+
+fn is_transient_status(status: reqwest::StatusCode) -> bool {
+    status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
+}
+
+fn response_indicates_expired(response: &Value) -> bool {
+    let message = response
+        .get("msg")
+        .or_else(|| response.get("message"))
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    [
+        "token expired",
+        "token invalid",
+        "access token",
+        "authentication expired",
+        "unauthorized",
+        "未登录",
+        "过期",
+    ]
+    .iter()
+    .any(|marker| message.contains(marker))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_transient_status;
+
+    #[test]
+    fn retries_rate_limits_and_server_failures_only() {
+        assert!(is_transient_status(reqwest::StatusCode::TOO_MANY_REQUESTS));
+        assert!(is_transient_status(reqwest::StatusCode::BAD_GATEWAY));
+        assert!(!is_transient_status(reqwest::StatusCode::BAD_REQUEST));
+        assert!(!is_transient_status(reqwest::StatusCode::UNAUTHORIZED));
     }
 }

@@ -2,6 +2,14 @@
 
 set -euo pipefail
 
+pem_file=""
+cleanup() {
+  if [[ -n "$pem_file" ]]; then
+    rm -f -- "$pem_file"
+  fi
+}
+trap cleanup EXIT
+
 USERNAME="${SUNSYNK_USERNAME:-virtual@e-linter.com}"
 PASSWORD="${SUNSYNK_PASSWORD:-elinter@0512}"
 BASE_URL="${SUNSYNK_BASE_URL:-https://api.sunsynk.net}"
@@ -73,17 +81,18 @@ sign_login_input="nonce=${login_nonce}&source=${SOURCE}${pubkey_prefix}"
 sign_login=$(md5hex "$sign_login_input")
 
 echo "[*] Logging in..."
+login_payload=$(jq -cn \
+  --arg sign "$sign_login" \
+  --argjson nonce "$login_nonce" \
+  --arg username "$USERNAME" \
+  --arg password "$encrypted_pwd_b64" \
+  --arg grant_type "$GRANT_TYPE" \
+  --arg client_id "$CLIENT_ID" \
+  --arg source "$SOURCE" \
+  '{sign: $sign, nonce: $nonce, username: $username, password: $password, grant_type: $grant_type, client_id: $client_id, source: $source}')
 login_response=$(curl -sS -X POST "${BASE_URL}/oauth/token/new" \
   -H "Content-Type: application/json;charset=UTF-8" \
-  -d '{
-        "sign": "'"$sign_login"'",
-        "nonce": '"$login_nonce"',
-        "username": "'"$USERNAME"'",
-        "password": "'"$encrypted_pwd_b64"'",
-        "grant_type": "'"$GRANT_TYPE"'",
-        "client_id": "'"$CLIENT_ID"'",
-        "source": "'"$SOURCE"'"
-      }')
+  -d "$login_payload")
 
 access_token=$(echo "$login_response" | jq -er '.data.access_token')
 echo "[+] Login successful; token length: ${#access_token}"
@@ -122,5 +131,4 @@ echo "$day_json" | jq -e '
 
 echo "[+] Day energy response OK for ${date_utc}"
 
-rm -f "$pem_file"
 echo "[✓] API smoke test completed successfully."

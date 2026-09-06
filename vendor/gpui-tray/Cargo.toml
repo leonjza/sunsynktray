@@ -8,10 +8,6 @@ repository = "https://github.com/domenkozar/gpui-tray"
 keywords = ["gpui", "tray", "desktop", "menu"]
 categories = ["gui"]
 
-[features]
-default = []
-menu-state = []
-
 [dependencies]
 async-channel = "2.5"
 gpui = { package = "gpui-pre", version = "0.3.1", default-features = false }

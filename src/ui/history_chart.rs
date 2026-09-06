@@ -1,5 +1,5 @@
 use crate::{
-    app::Dashboard,
+    app::{Dashboard, HistoryPointIndex},
     domain::HistorySeries,
     ui::format::{format_power, history_colors, history_label, history_value, series_color_index},
 };
@@ -10,10 +10,7 @@ use gpui_kit::component::plot::{AxisText, Grid, Plot, PlotAxis, StrokeStyle};
 use gpui_kit::component::{ActiveTheme, StyledExt, Theme};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
-use std::{
-    collections::HashSet,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
 pub(crate) const HEIGHT: f32 = 290.;
 const PLOT_LEFT: f32 = 42.;
@@ -24,8 +21,9 @@ pub(crate) struct HistoryPlot {
     pub(crate) history: Arc<Vec<HistorySeries>>,
     pub(crate) power_indices: Vec<usize>,
     pub(crate) soc_indices: Vec<usize>,
-    pub(crate) times: Vec<String>,
+    pub(crate) times: Arc<Vec<String>>,
     pub(crate) chart_bounds: Arc<Mutex<Option<Bounds<Pixels>>>>,
+    pub(crate) power_bounds: (f64, f64),
 }
 
 impl Plot for HistoryPlot {
@@ -46,10 +44,10 @@ impl Plot for HistoryPlot {
             *chart_bounds = Some(plot_bounds);
         }
         let x = ScalePoint::new(
-            self.times.clone(),
+            self.times.as_ref().clone(),
             vec![0., plot_bounds.size.width.as_f32()],
         );
-        let (min_value, max_value) = power_bounds(&self.history, &self.power_indices);
+        let (min_value, max_value) = self.power_bounds;
         let y = ScaleLinear::new(vec![min_value, max_value], vec![height, PLOT_TOP]);
         let y_ticks = [min_value, (min_value + max_value) / 2., max_value];
         let tick_margin = (self.times.len() / 5).max(1);
@@ -132,29 +130,6 @@ impl Plot for HistoryPlot {
     }
 }
 
-pub(crate) fn times(history: &[HistorySeries]) -> Vec<String> {
-    let mut times = Vec::new();
-    let mut seen = HashSet::new();
-    for point in history.iter().flat_map(|series| &series.points) {
-        if seen.insert(point.time.clone()) {
-            times.push(point.time.clone());
-        }
-    }
-    times.sort_unstable();
-    times
-}
-
-pub(crate) fn power_bounds(history: &[HistorySeries], indices: &[usize]) -> (f64, f64) {
-    indices
-        .iter()
-        .filter_map(|&index| history.get(index))
-        .flat_map(|series| series.points.iter().map(|point| point.watts))
-        .chain(Some(0.))
-        .fold((0.0_f64, 0.0_f64), |(min, max), value| {
-            (min.min(value), max.max(value))
-        })
-}
-
 fn power_y(value: f64, min: f64, max: f64, height: f32) -> f32 {
     if (max - min).abs() < f64::EPSILON {
         height / 2.
@@ -189,15 +164,18 @@ pub(crate) fn legend(theme: &Theme, history: &[HistorySeries]) -> impl IntoEleme
     legend
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn hover_layer(
     theme: &Theme,
     history: &[HistorySeries],
     power_indices: &[usize],
+    point_index: &HistoryPointIndex,
+    power_bounds: (f64, f64),
     entity: Entity<Dashboard>,
     times: &[String],
     hovered: Option<usize>,
 ) -> impl IntoElement {
-    let (min_value, max_value) = power_bounds(history, power_indices);
+    let (min_value, max_value) = power_bounds;
     let chart_height = HEIGHT - gpui_kit::component::plot::AXIS_GAP;
     let mut layer = div()
         .absolute()
@@ -220,23 +198,18 @@ pub(crate) fn hover_layer(
             let colors = history_colors();
             let power_dots = power_indices.iter().filter_map(|&index| {
                 let series = history.get(index)?;
-                let point = series
-                    .points
-                    .iter()
-                    .find(|point| Some(point.time.as_str()) == hover_time)?;
-                let y = power_y(point.watts, min_value, max_value, chart_height);
+                let time = hover_time?;
+                let watts = point_index.get(&index)?.get(time)?;
+                let y = power_y(*watts, min_value, max_value, chart_height);
                 Some((y, colors[series_color_index(&series.label) % colors.len()]))
             });
             let soc_dots = history
                 .iter()
-                .filter(|series| series.label.to_ascii_lowercase().contains("soc"))
-                .filter_map(|series| {
-                    let value = series
-                        .points
-                        .iter()
-                        .find(|point| Some(point.time.as_str()) == hover_time)?
-                        .watts
-                        .clamp(0., 100.);
+                .enumerate()
+                .filter(|(_, series)| series.label.to_ascii_lowercase().contains("soc"))
+                .filter_map(|(index, series)| {
+                    let time = hover_time?;
+                    let value = point_index.get(&index)?.get(time)?.clamp(0., 100.);
                     Some((
                         chart_height - (value as f32 / 100.) * (chart_height - PLOT_TOP),
                         colors[series_color_index(&series.label) % colors.len()],
@@ -258,28 +231,28 @@ pub(crate) fn hover_layer(
                 );
             }
             let mut values = div().v_flex().gap_1();
-            for series in history {
-                if let Some(point) = series
-                    .points
-                    .iter()
-                    .find(|point| Some(point.time.as_str()) == hover_time)
-                {
-                    values = values.child(
-                        div()
-                            .h_flex()
-                            .gap_2()
-                            .child(
+            for (series_index, series) in history.iter().enumerate() {
+                if let Some(time) = hover_time {
+                    if let Some(watts) = point_index
+                        .get(&series_index)
+                        .and_then(|points| points.get(time))
+                    {
+                        values =
+                            values.child(
                                 div()
-                                    .size_2()
-                                    .rounded_full()
-                                    .bg(colors[series_color_index(&series.label) % colors.len()]),
-                            )
-                            .child(div().text_xs().child(format!(
-                                "{}  {}",
-                                history_label(&series.label),
-                                history_value(&series.label, point.watts)
-                            ))),
-                    );
+                                    .h_flex()
+                                    .gap_2()
+                                    .child(
+                                        div().size_2().rounded_full().bg(colors
+                                            [series_color_index(&series.label) % colors.len()]),
+                                    )
+                                    .child(div().text_xs().child(format!(
+                                        "{}  {}",
+                                        history_label(&series.label),
+                                        history_value(&series.label, *watts)
+                                    ))),
+                            );
+                    }
                 }
             }
             let card = div()

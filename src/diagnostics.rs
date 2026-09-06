@@ -95,7 +95,7 @@ pub(crate) fn run(args: &[String], settings: Settings) -> Result<()> {
 
         Ok::<_, anyhow::Error>(ApiFixture {
             captured_at: Utc::now().to_rfc3339(),
-            api_base_url: settings.api_base_url.clone(),
+            api_base_url: redact_url(&settings.api_base_url),
             account: "[REDACTED]".into(),
             inverter_serial: serial,
             plant_id,
@@ -142,10 +142,97 @@ fn redact(value: Value) -> Value {
 }
 
 fn is_sensitive_key(key: &str) -> bool {
-    matches!(
-        key.to_ascii_lowercase().as_str(),
-        "password" | "access_token" | "refresh_token" | "token" | "authorization" | "email"
+    let normalized = key
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect::<String>();
+    normalized.contains("password")
+        || normalized.contains("token")
+        || normalized.contains("secret")
+        || normalized.contains("authorization")
+        || normalized.contains("email")
+        || normalized.contains("username")
+        || normalized.contains("account")
+        || normalized.contains("phone")
+        || normalized.contains("mobile")
+}
+
+fn redact_url(value: &str) -> String {
+    let Some(scheme_end) = value.find("://") else {
+        return value.to_owned();
+    };
+    let authority_start = scheme_end + 3;
+    let authority_end = value[authority_start..]
+        .find(['/', '?', '#'])
+        .map(|offset| authority_start + offset)
+        .unwrap_or(value.len());
+    let authority = &value[authority_start..authority_end];
+    let authority = authority
+        .rsplit_once('@')
+        .map(|(_, host)| host)
+        .unwrap_or(authority);
+    format!(
+        "{}{}{}",
+        &value[..authority_start],
+        authority,
+        redact_url_query(&value[authority_end..])
     )
+}
+
+fn redact_url_query(value: &str) -> String {
+    let Some(query_start) = value.find('?') else {
+        return value.to_owned();
+    };
+    let fragment_start = value[query_start..]
+        .find('#')
+        .map(|offset| query_start + offset)
+        .unwrap_or(value.len());
+    let query = value[query_start + 1..fragment_start]
+        .split('&')
+        .map(|item| {
+            let key = item.split_once('=').map_or(item, |(key, _)| key);
+            if is_sensitive_key(&percent_decode(key)) {
+                item.split_once('=').map_or_else(
+                    || format!("{key}=[REDACTED]"),
+                    |(key, _)| format!("{key}=[REDACTED]"),
+                )
+            } else {
+                item.to_owned()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("&");
+    format!(
+        "{}?{}{}",
+        &value[..query_start],
+        query,
+        &value[fragment_start..]
+    )
+}
+
+fn percent_decode(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' && index + 2 < bytes.len() {
+            let high = (bytes[index + 1] as char).to_digit(16);
+            let low = (bytes[index + 2] as char).to_digit(16);
+            if let (Some(high), Some(low)) = (high, low) {
+                decoded.push((high * 16 + low) as u8);
+                index += 3;
+                continue;
+            }
+        }
+        decoded.push(if bytes[index] == b'+' {
+            b' '
+        } else {
+            bytes[index]
+        });
+        index += 1;
+    }
+    String::from_utf8_lossy(&decoded).into_owned()
 }
 
 #[cfg(test)]
@@ -162,5 +249,37 @@ mod tests {
         assert_eq!(value["data"]["access_token"], "[REDACTED]");
         assert_eq!(value["records"][0]["refresh_token"], "[REDACTED]");
         assert_eq!(value["data"]["value"], 1);
+    }
+
+    #[test]
+    fn redaction_handles_camel_case_secret_keys() {
+        let value = redact(json!({
+            "accessToken": "secret",
+            "refreshToken": "also-secret",
+            "username": "person@example.com"
+        }));
+        assert_eq!(value["accessToken"], "[REDACTED]");
+        assert_eq!(value["refreshToken"], "[REDACTED]");
+        assert_eq!(value["username"], "[REDACTED]");
+    }
+
+    #[test]
+    fn redaction_removes_url_userinfo() {
+        assert_eq!(
+            redact_url("https://user:pass@example.test/api"),
+            "https://example.test/api"
+        );
+        assert_eq!(
+            redact_url("https://api.example.test"),
+            "https://api.example.test"
+        );
+        assert_eq!(
+            redact_url("https://api.example.test/path@name?token=secret&date=today#part"),
+            "https://api.example.test/path@name?token=[REDACTED]&date=today#part"
+        );
+        assert_eq!(
+            redact_url("https://api.example.test?token&%75sername=name&date=today"),
+            "https://api.example.test?token=[REDACTED]&%75sername=[REDACTED]&date=today"
+        );
     }
 }

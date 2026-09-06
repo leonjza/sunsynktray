@@ -32,17 +32,19 @@ jobs:
         run: choco install -y nsis
         shell: pwsh
 
-      - name: Check Windows build
-        run: cargo check --target x86_64-pc-windows-msvc
-        shell: pwsh
-
       - name: Install cargo-packager
         uses: taiki-e/install-action@v2
         with:
-          tool: cargo-packager
+          tool: cargo-packager@0.11.8
 
       - name: Build Windows release binary
-        run: cargo build --release --target x86_64-pc-windows-msvc
+        run: cargo build --locked --release --target x86_64-pc-windows-msvc
+        shell: pwsh
+        env:
+          RUSTFLAGS: -C target-feature=+crt-static
+
+      - name: Run Windows tests
+        run: cargo test --locked --release
         shell: pwsh
         env:
           RUSTFLAGS: -C target-feature=+crt-static
@@ -52,6 +54,7 @@ jobs:
         shell: pwsh
         env:
           RUSTFLAGS: -C target-feature=+crt-static
+          CARGO_NET_OFFLINE: true
 
       - name: Package portable ZIP
         run: |
@@ -113,13 +116,18 @@ jobs:
       - name: Install cargo-packager
         uses: taiki-e/install-action@v2
         with:
-          tool: cargo-packager
+          tool: cargo-packager@0.11.8
 
       - name: Build macOS release binary
-        run: cargo build --release --target aarch64-apple-darwin
+        run: cargo build --locked --release --target aarch64-apple-darwin
+
+      - name: Run macOS tests
+        run: cargo test --locked --release
 
       - name: Build macOS app bundle
-        run: cargo packager --release --target aarch64-apple-darwin --formats app
+        run: bash packaging/macos/package.sh aarch64-apple-darwin
+        env:
+          CARGO_NET_OFFLINE: true
 
       - name: Build macOS PKG installer
         run: |
@@ -137,6 +145,9 @@ jobs:
           test -x dist/SunTray.app/Contents/MacOS/suntray
           echo "Verifying bundle identifier"
           /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' dist/SunTray.app/Contents/Info.plist | grep -qx 'com.suntray.app'
+          echo "Verifying startup helper"
+          test -x dist/SunTray.app/Contents/Library/LoginItems/SunTrayStartup.app/Contents/MacOS/suntray-startup
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' dist/SunTray.app/Contents/Library/LoginItems/SunTrayStartup.app/Contents/Info.plist | grep -qx 'com.suntray.startup'
           echo "Verifying PKG metadata"
           pkg="dist/SunTray-${GITHUB_REF_NAME#v}-macos-arm64.pkg"
           expanded="$RUNNER_TEMP/suntray-pkg-expanded"
@@ -145,6 +156,7 @@ jobs:
           grep -q 'identifier="com.suntray.app"' "$expanded/PackageInfo"
           echo "Verifying PKG payload"
           pkgutil --payload-files "$pkg" | grep -Eq '^\./SunTray\.app/Contents/MacOS/suntray$'
+          pkgutil --payload-files "$pkg" | grep -Eq '^\./SunTray\.app/Contents/Library/LoginItems/SunTrayStartup\.app/Contents/MacOS/suntray-startup$'
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4

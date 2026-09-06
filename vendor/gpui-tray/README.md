@@ -17,7 +17,7 @@ platform-neutral events to a task on GPUI's foreground executor.
 From a graphical desktop session, run:
 
 ```sh
-cargo run --example tray --features menu-state
+cargo run --example tray
 ```
 
 The example has no application window. Use its tray menu to change checked and
@@ -51,26 +51,12 @@ fn build_tray(cx: &mut App, icon: Icon) -> gpui_tray::Result<Tray> {
 ```
 
 Call `Tray::refresh_menu` after state changes outside tray actions. The menu is
-automatically rebuilt after a tray action is dispatched. With `menu-state`
-enabled, checked/disabled state produced by synchronous action handlers updates
-immediately.
+automatically rebuilt after a tray action is dispatched, and checked/disabled
+state produced by synchronous action handlers updates immediately.
 
 `Tray::close` removes the native item deterministically and is safe to call more
 than once. Dropping the last clone performs the same cleanup on a best-effort
 basis.
 
-## Checked and disabled menu state
-
-GPUI's checked/disabled menu API currently exists on GPUI main but is not in a
-separately versioned crates.io release. Enable the `menu-state` feature when
-using a GPUI revision that provides `MenuItem::is_checked` and
-`MenuItem::is_disabled`:
-
-```toml
-gpui-tray = { version = "0.1", features = ["menu-state"] }
-```
-
-The feature is disabled by default for compatibility with GPUI 0.2.2. Without
-it, tray menu entries are treated as enabled and unchecked. Once GPUI 0.2.3 is
-released, the existing `^0.2.2` dependency requirement can resolve to it and
-the feature will work without a git dependency.
+Checked and disabled menu state is provided directly through the current GPUI
+menu API.

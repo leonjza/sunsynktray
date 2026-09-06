@@ -59,5 +59,6 @@ mod tests {
         assert!(InstanceLock::acquire_at(&path)
             .expect("lock should be released after drop")
             .is_some());
+        let _ = std::fs::remove_file(path);
     }
 }

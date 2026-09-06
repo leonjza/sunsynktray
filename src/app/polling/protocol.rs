@@ -11,6 +11,7 @@ pub(crate) enum PollResult {
     },
     PollStarted,
     Progress {
+        generation: u64,
         message: String,
     },
     History(Vec<HistorySeries>),
@@ -37,19 +38,11 @@ pub(crate) enum Command {
     Refresh,
     Stop,
     Select(String, Option<i64>),
-    Reconfigure {
-        base_url: String,
-        email: String,
-        password: String,
-        serial: String,
-        plant_id: Option<i64>,
-        refresh_token: Option<String>,
-        interval: u64,
-    },
     HistoryDate(chrono::NaiveDate),
 }
 
 pub(crate) struct PollConfig {
+    pub(crate) generation: u64,
     pub(crate) base_url: String,
     pub(crate) email: String,
     pub(crate) password: String,

@@ -24,7 +24,9 @@ pub(crate) fn render(view: SettingsView<'_>) -> AnyElement {
         tray_metric,
         fetching,
         startup_enabled,
+        startup_pending,
         startup_error,
+        refresh_interval_error,
         entity,
     } = view;
     div()
@@ -75,10 +77,18 @@ pub(crate) fn render(view: SettingsView<'_>) -> AnyElement {
             div()
                 .v_flex()
                 .gap_1()
-                .child(field(
-                    "Refresh interval (seconds)",
-                    Input::new(refresh_interval),
-                ))
+                .child(
+                    div()
+                        .v_flex()
+                        .gap_1()
+                        .child(field(
+                            "Refresh interval (seconds)",
+                            Input::new(refresh_interval),
+                        ))
+                        .when_some(refresh_interval_error, |element, error| {
+                            element.child(div().text_xs().text_color(theme.danger).child(error))
+                        }),
+                )
                 .child(
                     div()
                         .v_flex()
@@ -106,6 +116,7 @@ pub(crate) fn render(view: SettingsView<'_>) -> AnyElement {
                                     let entity = entity.clone();
                                     Switch::new("launch-at-startup")
                                         .checked(startup_enabled)
+                                        .disabled(startup_pending)
                                         .small()
                                         .on_click(move |enabled, _, cx| {
                                             entity.update(cx, |dashboard, cx| {
@@ -155,7 +166,9 @@ pub(crate) struct SettingsView<'a> {
     pub(crate) tray_metric: Option<TrayMetric>,
     pub(crate) fetching: bool,
     pub(crate) startup_enabled: bool,
+    pub(crate) startup_pending: bool,
     pub(crate) startup_error: Option<String>,
+    pub(crate) refresh_interval_error: Option<String>,
     pub(crate) entity: Entity<Dashboard>,
 }
 
@@ -245,12 +258,25 @@ pub(crate) fn connect_control(
                         move |_, _, cx| {
                             let email = email.read(cx).value().to_string();
                             let password = password.read(cx).value().to_string();
-                            let refresh_seconds = refresh_interval
-                                .read(cx)
-                                .value()
-                                .parse::<u64>()
-                                .unwrap_or(60)
-                                .clamp(1, 3600);
+                            let value = refresh_interval.read(cx).value().to_string();
+                            let Ok(refresh_seconds) = value.parse::<u64>() else {
+                                entity.update(cx, |dashboard, cx| {
+                                    dashboard.set_refresh_interval_error(
+                                        Some("Enter a whole number of seconds.".into()),
+                                        cx,
+                                    );
+                                });
+                                return;
+                            };
+                            if !(1..=3600).contains(&refresh_seconds) {
+                                entity.update(cx, |dashboard, cx| {
+                                    dashboard.set_refresh_interval_error(
+                                        Some("Use a value between 1 and 3600 seconds.".into()),
+                                        cx,
+                                    );
+                                });
+                                return;
+                            }
                             entity.update(cx, |dashboard, cx| {
                                 dashboard.reconnect_or_connect(
                                     email,

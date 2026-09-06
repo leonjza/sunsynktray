@@ -2,8 +2,9 @@ use anyhow::Result;
 use keyring::Entry;
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::VecDeque,
     fmt,
-    sync::{Mutex, OnceLock},
+    sync::{mpsc, Arc, Condvar, Mutex, OnceLock},
 };
 
 const SERVICE: &str = "com.suntray.sunsynk";
@@ -70,17 +71,6 @@ fn save_record_unlocked(record: &SavedCredentials) -> Result<()> {
     Ok(())
 }
 
-fn empty_record(email: &str) -> SavedCredentials {
-    SavedCredentials {
-        email: email.to_owned(),
-        password: String::new(),
-        refresh_token: None,
-        selected_serial: None,
-        refresh_seconds: None,
-        tray_metric: None,
-    }
-}
-
 fn update_record(
     email: Option<&str>,
     update: impl FnOnce(&mut SavedCredentials) -> bool,
@@ -88,7 +78,7 @@ fn update_record(
     let _guard = keychain_lock()
         .lock()
         .unwrap_or_else(|error| error.into_inner());
-    let mut record = load_unlocked()?.unwrap_or_else(|| empty_record(email.unwrap_or_default()));
+    let mut record = load_unlocked()?.ok_or_else(|| anyhow::anyhow!("no saved credentials"))?;
     let previous_email = record.email.clone();
     if let Some(email) = email {
         record.email = email.to_owned();
@@ -168,8 +158,122 @@ pub(crate) fn save_refresh_token(email: &str, token: &str) -> Result<()> {
     save_record_unlocked(&record)
 }
 
+pub(crate) fn save_refresh_seconds(email: &str, refresh_seconds: u64) -> Result<()> {
+    update_record(Some(email), |record| {
+        let refresh_seconds = refresh_seconds.clamp(1, 3600);
+        if record.refresh_seconds == Some(refresh_seconds) {
+            false
+        } else {
+            record.refresh_seconds = Some(refresh_seconds);
+            true
+        }
+    })
+}
+
+type PersistenceTaskFn = Box<dyn FnOnce() + Send + 'static>;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PersistenceKey {
+    Credentials,
+    Selection,
+    TrayMetric,
+    RefreshToken,
+    RefreshSeconds,
+    Flush,
+}
+
+struct PersistenceTask {
+    key: PersistenceKey,
+    task: PersistenceTaskFn,
+}
+
+struct PersistenceQueue {
+    pending: Mutex<VecDeque<PersistenceTask>>,
+    wake: Condvar,
+}
+
+impl PersistenceQueue {
+    fn enqueue(&self, key: PersistenceKey, task: PersistenceTaskFn) {
+        let mut pending = self
+            .pending
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if key != PersistenceKey::Flush {
+            pending.retain(|item| item.key != key);
+        }
+        pending.push_back(PersistenceTask { key, task });
+        self.wake.notify_one();
+    }
+
+    fn next(&self) -> PersistenceTask {
+        let mut pending = self
+            .pending
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        loop {
+            if let Some(task) = pending.pop_front() {
+                return task;
+            }
+            pending = self
+                .wake
+                .wait(pending)
+                .unwrap_or_else(|error| error.into_inner());
+        }
+    }
+}
+
+fn persistence_queue() -> Option<&'static Arc<PersistenceQueue>> {
+    static QUEUE: OnceLock<Option<Arc<PersistenceQueue>>> = OnceLock::new();
+    QUEUE
+        .get_or_init(|| {
+            let queue = Arc::new(PersistenceQueue {
+                pending: Mutex::new(VecDeque::new()),
+                wake: Condvar::new(),
+            });
+            let worker_queue = queue.clone();
+            let worker = std::thread::Builder::new()
+                .name("suntray-credentials".into())
+                .spawn(move || loop {
+                    (worker_queue.next().task)();
+                });
+            match worker {
+                Ok(_) => Some(queue),
+                Err(error) => {
+                    tracing::error!(%error, "could not start credential persistence worker");
+                    None
+                }
+            }
+        })
+        .as_ref()
+}
+
+fn enqueue_persistence(key: PersistenceKey, task: impl FnOnce() + Send + 'static) -> bool {
+    if let Some(queue) = persistence_queue() {
+        queue.enqueue(key, Box::new(task));
+        true
+    } else {
+        tracing::warn!("credential persistence worker could not be started");
+        false
+    }
+}
+
+pub(crate) fn flush() {
+    let (sender, receiver) = mpsc::sync_channel(0);
+    if !enqueue_persistence(PersistenceKey::Flush, move || {
+        let _ = sender.send(());
+    }) {
+        return;
+    }
+    if receiver
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .is_err()
+    {
+        tracing::warn!("credential persistence worker stopped before flushing");
+    }
+}
+
 pub(crate) fn save_selection_async(email: String, serial: String) {
-    std::thread::spawn(move || {
+    enqueue_persistence(PersistenceKey::Selection, move || {
         if let Err(error) = save_selection(&email, &serial) {
             tracing::warn!(%error, "could not save selected inverter");
         }
@@ -177,7 +281,7 @@ pub(crate) fn save_selection_async(email: String, serial: String) {
 }
 
 pub(crate) fn save_tray_metric_async(metric: Option<String>) {
-    std::thread::spawn(move || {
+    enqueue_persistence(PersistenceKey::TrayMetric, move || {
         if let Err(error) = save_tray_metric(metric.as_deref()) {
             tracing::warn!(%error, "could not save tray metric");
         }
@@ -185,9 +289,66 @@ pub(crate) fn save_tray_metric_async(metric: Option<String>) {
 }
 
 pub(crate) fn save_refresh_token_async(email: String, token: String) {
-    std::thread::spawn(move || {
+    enqueue_persistence(PersistenceKey::RefreshToken, move || {
         if let Err(error) = save_refresh_token(&email, &token) {
             tracing::warn!(%error, "could not persist refreshed SunSynk token");
         }
     });
+}
+
+pub(crate) fn save_refresh_seconds_async(email: String, refresh_seconds: u64) {
+    enqueue_persistence(PersistenceKey::RefreshSeconds, move || {
+        if let Err(error) = save_refresh_seconds(&email, refresh_seconds) {
+            tracing::warn!(%error, "could not persist refresh interval");
+        }
+    });
+}
+
+pub(crate) fn save_async(
+    email: String,
+    password: String,
+    refresh_token: Option<String>,
+    selected_serial: Option<String>,
+    refresh_seconds: u64,
+    tray_metric: Option<String>,
+) {
+    enqueue_persistence(PersistenceKey::Credentials, move || {
+        if let Err(error) = save(
+            &email,
+            &password,
+            refresh_token.as_deref(),
+            selected_serial.as_deref(),
+            refresh_seconds,
+            tray_metric.as_deref(),
+        ) {
+            tracing::warn!(%error, "could not save SunSynk credentials");
+        }
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PersistenceKey, PersistenceQueue};
+    use std::{
+        collections::VecDeque,
+        sync::{Condvar, Mutex},
+    };
+
+    #[test]
+    fn flush_barriers_are_not_coalesced() {
+        let queue = PersistenceQueue {
+            pending: Mutex::new(VecDeque::new()),
+            wake: Condvar::new(),
+        };
+        queue.enqueue(PersistenceKey::Selection, Box::new(|| {}));
+        queue.enqueue(PersistenceKey::Selection, Box::new(|| {}));
+        queue.enqueue(PersistenceKey::Flush, Box::new(|| {}));
+        queue.enqueue(PersistenceKey::Flush, Box::new(|| {}));
+
+        let pending = queue.pending.lock().unwrap();
+        assert_eq!(pending.len(), 3);
+        assert_eq!(pending[0].key, PersistenceKey::Selection);
+        assert_eq!(pending[1].key, PersistenceKey::Flush);
+        assert_eq!(pending[2].key, PersistenceKey::Flush);
+    }
 }

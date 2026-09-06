@@ -3,7 +3,28 @@ use crate::{
     storage::config::Settings,
 };
 use gpui_kit::Global;
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::{Arc, Mutex},
+};
+
+pub(crate) type HistoryPointIndex = HashMap<usize, HashMap<String, f64>>;
+
+#[derive(Clone)]
+pub(crate) struct HistorySnapshot {
+    pub(crate) series: Arc<Vec<HistorySeries>>,
+    pub(crate) index: Arc<HistoryPointIndex>,
+    pub(crate) times: Arc<Vec<String>>,
+    pub(crate) power_indices: Arc<Vec<usize>>,
+    pub(crate) soc_indices: Arc<Vec<usize>>,
+    pub(crate) power_bounds: (f64, f64),
+}
+
+#[derive(Clone)]
+pub(crate) struct MonitorDataSnapshot {
+    pub(crate) snapshot: EnergySnapshot,
+    pub(crate) history: HistorySnapshot,
+}
 
 pub(crate) struct MonitorState {
     pub(crate) settings: Settings,
@@ -13,7 +34,7 @@ pub(crate) struct MonitorState {
 struct MonitorData {
     snapshot: EnergySnapshot,
     live_data: bool,
-    history: Arc<Vec<HistorySeries>>,
+    history: HistorySnapshot,
 }
 
 pub(crate) struct MonitorStateGlobal(pub Arc<MonitorState>);
@@ -21,6 +42,16 @@ impl Global for MonitorStateGlobal {}
 
 impl MonitorState {
     pub(crate) fn new(settings: Settings) -> Arc<Self> {
+        let history = Arc::new(vec![HistorySeries {
+            label: "pac".into(),
+            points: (0..24)
+                .map(|hour| HistoryPoint {
+                    time: format!("{hour:02}:00"),
+                    watts: 900.0 + (hour as f64 * 130.0).sin() * 600.0,
+                })
+                .collect(),
+        }]);
+        let history = make_history_snapshot(history);
         Arc::new(Self {
             settings,
             data: Arc::new(Mutex::new(MonitorData {
@@ -41,15 +72,7 @@ impl MonitorState {
                     grid_to: Some(false),
                 },
                 live_data: false,
-                history: Arc::new(vec![HistorySeries {
-                    label: "pac".into(),
-                    points: (0..24)
-                        .map(|hour| HistoryPoint {
-                            time: format!("{hour:02}:00"),
-                            watts: 900.0 + (hour as f64 * 130.0).sin() * 600.0,
-                        })
-                        .collect(),
-                }]),
+                history,
             })),
         })
     }
@@ -61,10 +84,9 @@ impl MonitorState {
     }
 
     pub(crate) fn set_history(&self, history: Vec<HistorySeries>) {
-        self.data
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .history = Arc::new(history);
+        let history = make_history_snapshot(Arc::new(history));
+        let mut data = self.data.lock().unwrap_or_else(|error| error.into_inner());
+        data.history = history;
     }
 
     pub(crate) fn has_live_data(&self) -> bool {
@@ -82,12 +104,127 @@ impl MonitorState {
             .clone()
     }
 
-    pub(crate) fn history(&self) -> Arc<Vec<HistorySeries>> {
-        self.data
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .history
-            .clone()
+    pub(crate) fn data_snapshot(&self) -> MonitorDataSnapshot {
+        let data = self.data.lock().unwrap_or_else(|error| error.into_inner());
+        MonitorDataSnapshot {
+            snapshot: data.snapshot.clone(),
+            history: data.history.clone(),
+        }
+    }
+}
+
+fn index_history(history: &[HistorySeries]) -> HistoryPointIndex {
+    let mut index = HistoryPointIndex::new();
+    for (series_index, series) in history.iter().enumerate() {
+        let series_index = index.entry(series_index).or_default();
+        for point in &series.points {
+            series_index
+                .entry(point.time.clone())
+                .or_insert(point.watts);
+        }
+    }
+    index
+}
+
+fn make_history_snapshot(history: Arc<Vec<HistorySeries>>) -> HistorySnapshot {
+    let power_indices = power_indices(&history);
+    HistorySnapshot {
+        index: Arc::new(index_history(&history)),
+        times: Arc::new(history_times(&history)),
+        soc_indices: Arc::new(soc_indices(&history)),
+        power_bounds: power_bounds(&history, &power_indices),
+        power_indices: Arc::new(power_indices),
+        series: history,
+    }
+}
+
+fn history_times(history: &[HistorySeries]) -> Vec<String> {
+    let mut times = Vec::new();
+    let mut seen = HashSet::new();
+    for point in history.iter().flat_map(|series| &series.points) {
+        if seen.insert(point.time.clone()) {
+            times.push(point.time.clone());
+        }
+    }
+    times.sort_unstable();
+    times
+}
+
+fn power_indices(history: &[HistorySeries]) -> Vec<usize> {
+    history
+        .iter()
+        .enumerate()
+        .filter_map(|(index, series)| {
+            (!series.label.to_ascii_lowercase().contains("soc")).then_some(index)
+        })
+        .collect()
+}
+
+fn soc_indices(history: &[HistorySeries]) -> Vec<usize> {
+    history
+        .iter()
+        .enumerate()
+        .filter_map(|(index, series)| {
+            series
+                .label
+                .to_ascii_lowercase()
+                .contains("soc")
+                .then_some(index)
+        })
+        .collect()
+}
+
+fn power_bounds(history: &[HistorySeries], indices: &[usize]) -> (f64, f64) {
+    indices
+        .iter()
+        .filter_map(|&index| history.get(index))
+        .flat_map(|series| series.points.iter().map(|point| point.watts))
+        .chain(Some(0.))
+        .fold((0.0_f64, 0.0_f64), |(min, max), value| {
+            (min.min(value), max.max(value))
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::index_history;
+    use crate::domain::{HistoryPoint, HistorySeries};
+
+    #[test]
+    fn history_index_preserves_series_and_first_duplicate_value() {
+        let history = vec![
+            HistorySeries {
+                label: "solar".into(),
+                points: vec![
+                    HistoryPoint {
+                        time: "12:00".into(),
+                        watts: 100.0,
+                    },
+                    HistoryPoint {
+                        time: "12:00".into(),
+                        watts: 999.0,
+                    },
+                ],
+            },
+            HistorySeries {
+                label: "load".into(),
+                points: vec![HistoryPoint {
+                    time: "12:00".into(),
+                    watts: 50.0,
+                }],
+            },
+        ];
+
+        let index = index_history(&history);
+        assert_eq!(
+            index.get(&0).and_then(|points| points.get("12:00")),
+            Some(&100.0)
+        );
+        assert_eq!(
+            index.get(&1).and_then(|points| points.get("12:00")),
+            Some(&50.0)
+        );
+        assert!(!index.contains_key(&2));
     }
 }
 

@@ -14,6 +14,7 @@ pub(crate) struct StatusBar {
     source_activity: String,
     source_fetching: bool,
     source_next_refresh_in: Option<u64>,
+    source_refresh_generation: u64,
 }
 
 impl Render for StatusBar {
@@ -32,6 +33,7 @@ impl StatusBar {
             source_activity: String::new(),
             source_fetching: false,
             source_next_refresh_in: None,
+            source_refresh_generation: 0,
         }
     }
 
@@ -41,12 +43,14 @@ impl StatusBar {
         activity: String,
         fetching: bool,
         next_refresh_in: Option<u64>,
+        refresh_generation: u64,
         cx: &mut Context<Self>,
     ) {
         if self.screen == screen
             && self.source_activity == activity
             && self.source_fetching == fetching
             && self.source_next_refresh_in == next_refresh_in
+            && self.source_refresh_generation == refresh_generation
         {
             return;
         }
@@ -58,6 +62,7 @@ impl StatusBar {
         self.source_activity = activity;
         self.source_fetching = fetching;
         self.source_next_refresh_in = next_refresh_in;
+        self.source_refresh_generation = refresh_generation;
         cx.notify();
     }
 

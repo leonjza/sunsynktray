@@ -11,13 +11,33 @@ use gpui_kit::prelude::InteractiveElement;
 use gpui_kit::*;
 
 impl Render for Dashboard {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let (status_activity, status_fetching, status_next_refresh_in) = {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if !self.credentials_synced && self.controller.read(cx).credentials_loaded {
+            if let Some((email, password)) = self.controller.read(cx).credentials.clone() {
+                if self.email.read(cx).value().is_empty() {
+                    self.email
+                        .update(cx, |input, cx| input.set_value(email, window, cx));
+                }
+                if self.password.read(cx).value().is_empty() {
+                    self.password
+                        .update(cx, |input, cx| input.set_value(password, window, cx));
+                }
+                let refresh_seconds = self.controller.read(cx).refresh_seconds;
+                if self.refresh_interval.read(cx).value().as_ref() == "60" {
+                    self.refresh_interval.update(cx, |input, cx| {
+                        input.set_value(refresh_seconds.to_string(), window, cx)
+                    });
+                }
+            }
+            self.credentials_synced = true;
+        }
+        let (status_activity, status_fetching, status_next_refresh_in, status_refresh_generation) = {
             let controller = self.controller.read(cx);
             (
                 controller.activity.clone(),
                 controller.fetching,
                 controller.next_refresh_in,
+                controller.refresh_generation,
             )
         };
         let status_bar = self.status_bar.clone();
@@ -28,6 +48,7 @@ impl Render for Dashboard {
                 status_activity,
                 status_fetching,
                 status_next_refresh_in,
+                status_refresh_generation,
                 cx,
             );
         });
@@ -82,7 +103,9 @@ impl Render for Dashboard {
                     tray_metric: controller.tray_metric,
                     fetching: status_fetching,
                     startup_enabled: self.startup_enabled,
+                    startup_pending: self.startup_pending,
                     startup_error: self.startup_error.clone(),
+                    refresh_interval_error: self.refresh_interval_error.clone(),
                     entity,
                 }),
             })

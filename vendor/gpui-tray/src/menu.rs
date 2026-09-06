@@ -70,8 +70,8 @@ fn compile_items(
     items
         .into_iter()
         .map(|item| {
-            let checked = menu_item_checked(&item);
-            let enabled = menu_item_enabled(&item);
+            let checked = item.is_checked();
+            let enabled = !item.is_disabled();
             match item {
                 gpui::MenuItem::Separator => Ok(NativeMenuItem::Separator),
                 gpui::MenuItem::Submenu(menu) => Ok(NativeMenuItem::Submenu {
@@ -98,26 +98,6 @@ fn compile_items(
         .collect()
 }
 
-#[cfg(feature = "menu-state")]
-fn menu_item_checked(item: &gpui::MenuItem) -> bool {
-    item.is_checked()
-}
-
-#[cfg(not(feature = "menu-state"))]
-fn menu_item_checked(_item: &gpui::MenuItem) -> bool {
-    false
-}
-
-#[cfg(feature = "menu-state")]
-fn menu_item_enabled(item: &gpui::MenuItem) -> bool {
-    !item.is_disabled()
-}
-
-#[cfg(not(feature = "menu-state"))]
-fn menu_item_enabled(_item: &gpui::MenuItem) -> bool {
-    true
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -126,7 +106,6 @@ mod tests {
 
     #[test]
     fn compiles_nested_menu_and_actions() {
-        #[cfg(feature = "menu-state")]
         let items = vec![
             gpui::MenuItem::action("First", First).checked(true),
             gpui::MenuItem::separator(),
@@ -135,15 +114,6 @@ mod tests {
                     .items([gpui::MenuItem::action("Second", Second).disabled(true)]),
             ),
         ];
-        #[cfg(not(feature = "menu-state"))]
-        let items = vec![
-            gpui::MenuItem::action("First", First),
-            gpui::MenuItem::separator(),
-            gpui::MenuItem::submenu(
-                gpui::Menu::new("Nested").items([gpui::MenuItem::action("Second", Second)]),
-            ),
-        ];
-
         let (snapshot, table) = compile_menu(7, items).unwrap();
         assert_eq!(snapshot.generation, 7);
         assert_eq!(table.generation, 7);
@@ -156,7 +126,7 @@ mod tests {
         else {
             panic!("first compiled item is not an action");
         };
-        assert_eq!(*checked, cfg!(feature = "menu-state"));
+        assert!(*checked);
         assert!(*enabled);
     }
 }

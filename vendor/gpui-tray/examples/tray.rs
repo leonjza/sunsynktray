@@ -94,24 +94,12 @@ fn build_menu(cx: &mut App) -> Vec<MenuItem> {
     ]
 }
 
-#[cfg(feature = "menu-state")]
 fn checked(item: MenuItem, checked: bool) -> MenuItem {
     item.checked(checked)
 }
 
-#[cfg(not(feature = "menu-state"))]
-fn checked(item: MenuItem, _checked: bool) -> MenuItem {
-    item
-}
-
-#[cfg(feature = "menu-state")]
 fn disabled(item: MenuItem, disabled: bool) -> MenuItem {
     item.disabled(disabled)
-}
-
-#[cfg(not(feature = "menu-state"))]
-fn disabled(item: MenuItem, _disabled: bool) -> MenuItem {
-    item
 }
 
 fn select_list(_: &SelectList, cx: &mut App) {

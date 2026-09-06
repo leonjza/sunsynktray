@@ -29,10 +29,8 @@ impl SunsynkClient {
             self.password.as_bytes(),
         )?;
         let nonce = nonce();
-        let sign = md5_hex(&format!(
-            "nonce={nonce}&source=sunsynk{}",
-            &public_key[..10.min(public_key.len())]
-        ));
+        let key_prefix = public_key.chars().take(10).collect::<String>();
+        let sign = md5_hex(&format!("nonce={nonce}&source=sunsynk{key_prefix}"));
         self.report_progress("Logging in to SunSynk…");
         let body = self.request("POST", "/oauth/token/new", None, Some(&serde_json::json!({ "username": self.username, "password": BASE64.encode(encrypted), "grant_type": "password", "client_id": "csp-web", "source": "sunsynk", "nonce": nonce, "sign": sign }))).await?;
         let data = body.get("data").cloned().unwrap_or(Value::Null);

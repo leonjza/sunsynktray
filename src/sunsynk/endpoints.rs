@@ -1,6 +1,7 @@
 use super::{error::AuthenticationExpired, parsing::*, SunsynkClient};
 use crate::domain::{EnergySnapshot, HistorySeries, InverterSummary};
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, bail, Result};
+use futures_util::future::join3;
 use serde_json::Value;
 
 impl SunsynkClient {
@@ -166,12 +167,12 @@ impl SunsynkClient {
         let flow_path = flow_path.to_owned();
         let day_date = day_date.to_owned();
         let today = today.to_owned();
-        let realtime_task = tokio::spawn(async move {
+        let realtime = async move {
             realtime_client
                 .get_authenticated(&realtime_path, Some(&[("id", plant_id.to_string())]))
                 .await
-        });
-        let day_task = tokio::spawn(async move {
+        };
+        let day = async move {
             day_client
                 .get_authenticated(
                     &day_path,
@@ -182,19 +183,14 @@ impl SunsynkClient {
                     ]),
                 )
                 .await
-        });
-        let flow_task = tokio::spawn(async move {
+        };
+        let flow = async move {
             flow_client
                 .get_authenticated(&flow_path, Some(&[("date", today)]))
                 .await
-        });
-        Ok([
-            realtime_task
-                .await
-                .context("realtime request task stopped")?,
-            day_task.await.context("daily request task stopped")?,
-            flow_task.await.context("flow request task stopped")?,
-        ])
+        };
+        let (realtime, day, flow) = join3(realtime, day, flow).await;
+        Ok([realtime, day, flow])
     }
 
     pub async fn inspect_endpoint(
@@ -206,31 +202,71 @@ impl SunsynkClient {
     }
 
     pub async fn history(&mut self, plant_id: i64, date: &str) -> Result<Vec<HistorySeries>> {
-        let params = [
+        // Use the common authenticated GET path so history gets the same
+        // expiry retry and refresh-token fallback as live readings.
+        self.ensure_authenticated().await?;
+        let day_path = format!("/api/v1/plant/energy/{plant_id}/day");
+        let flow_path = format!("/api/v1/plant/energy/{plant_id}/flow");
+        let mut responses = self
+            .parallel_history(&day_path, &flow_path, plant_id, date)
+            .await?;
+        if responses
+            .iter()
+            .any(|response| response.as_ref().err().is_some_and(is_auth_expired))
+        {
+            self.access_token = None;
+            self.ensure_authenticated().await?;
+            responses = self
+                .parallel_history(&day_path, &flow_path, plant_id, date)
+                .await?;
+        }
+        let [day, flow] = responses;
+        let from_flow = flow.as_ref().map(history_series).unwrap_or_default();
+        if !from_flow.is_empty() {
+            return Ok(from_flow);
+        }
+        let from_day = day.as_ref().map(history_series).unwrap_or_default();
+        if !from_day.is_empty() {
+            return Ok(from_day);
+        }
+        match (flow, day) {
+            (Err(flow_error), Err(day_error)) => {
+                Err(day_error.context(format!("historical flow request also failed: {flow_error}")))
+            }
+            (Err(error), _) | (_, Err(error)) => Err(error),
+            (Ok(_), Ok(_)) => Ok(Vec::new()),
+        }
+    }
+
+    async fn parallel_history(
+        &self,
+        day_path: &str,
+        flow_path: &str,
+        plant_id: i64,
+        date: &str,
+    ) -> Result<[Result<Value>; 2]> {
+        let day_client = self.clone();
+        let flow_client = self.clone();
+        let day_path = day_path.to_owned();
+        let flow_path = flow_path.to_owned();
+        let day_params = [
             ("lan", "en".to_owned()),
             ("date", date.to_owned()),
             ("id", plant_id.to_string()),
         ];
-        // Use the common authenticated GET path so history gets the same
-        // expiry retry and refresh-token fallback as live readings.
-        let day = self
-            .get(
-                &format!("/api/v1/plant/energy/{plant_id}/day"),
-                Some(&params),
-            )
-            .await?;
-        let flow = self
-            .get(
-                &format!("/api/v1/plant/energy/{plant_id}/flow"),
-                Some(&[("date", date.to_owned())]),
-            )
-            .await?;
-        let from_flow = history_series(&flow);
-        Ok(if from_flow.is_empty() {
-            history_series(&day)
-        } else {
-            from_flow
-        })
+        let flow_params = [("date", date.to_owned())];
+        let day = async move {
+            day_client
+                .get_authenticated(&day_path, Some(&day_params))
+                .await
+        };
+        let flow = async move {
+            flow_client
+                .get_authenticated(&flow_path, Some(&flow_params))
+                .await
+        };
+        let (day, flow) = futures_util::future::join(day, flow).await;
+        Ok([day, flow])
     }
 }
 
@@ -246,20 +282,32 @@ mod tests {
     use super::is_auth_expired;
     use crate::sunsynk::error::AuthenticationExpired;
     use anyhow::anyhow;
-    use serde_json::Value;
+    use serde_json::json;
 
     #[test]
-    fn captured_api_fixture_contains_parseable_dashboard_data() {
-        let fixture: Value =
-            serde_json::from_str(include_str!("../../fixtures/api/latest.json")).unwrap();
-        let responses = fixture["responses"].as_object().unwrap();
-        let flow = flow_object(&responses["flow"]).unwrap();
+    fn sample_api_response_contains_parseable_dashboard_data() {
+        let flow_response = json!({
+            "data": {
+                "pvPower": 463,
+                "homeLoadPower": 438,
+                "battPower": 25,
+                "soc": 99,
+                "pv": [{"power": 240}, {"power": 223}]
+            }
+        });
+        let day_response = json!({
+            "data": {"infos": [{
+                "label": "pv",
+                "records": [{"time": "2026-09-06 12:00:00", "value": 463}]
+            }]}
+        });
+        let flow = flow_object(&flow_response).unwrap();
         let snapshot = snapshot_from_flow(flow, "2105287329");
         assert_eq!(snapshot.pv_watts, 463.0);
         assert_eq!(snapshot.load_watts, 438.0);
         assert_eq!(snapshot.battery_soc, 99.0);
-        assert!(!history_series(&responses["plant_energy_day"]).is_empty());
-        assert!(flow_object(&responses["flow"]).is_some());
+        assert!(!history_series(&day_response).is_empty());
+        assert!(flow_object(&flow_response).is_some());
     }
 
     #[test]

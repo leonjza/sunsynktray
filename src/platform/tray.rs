@@ -1,7 +1,6 @@
 use gpui_kit::{actions, App, Global, MenuItem};
 use gpui_tray::{Icon, Tray};
 
-#[cfg(not(target_os = "macos"))]
 use gpui_kit::BorrowAppContext;
 
 #[cfg(target_os = "windows")]
@@ -13,6 +12,10 @@ pub(crate) struct TrayState {
     pub(crate) tray: Tray,
     #[cfg(not(target_os = "macos"))]
     icon_key: Option<IconKey>,
+    #[cfg(not(target_os = "macos"))]
+    tooltip: Option<String>,
+    #[cfg(target_os = "macos")]
+    last_update: Option<MacTrayUpdate>,
 }
 impl Global for TrayState {}
 
@@ -21,6 +24,14 @@ impl Global for TrayState {}
 struct IconKey {
     value: Option<String>,
     symbol: String,
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct MacTrayUpdate {
+    value: Option<String>,
+    symbol: String,
+    tooltip: String,
 }
 
 pub(crate) fn install(cx: &mut App) {
@@ -46,6 +57,10 @@ pub(crate) fn install(cx: &mut App) {
                 value: None,
                 symbol: "bolt.fill".into(),
             }),
+            #[cfg(not(target_os = "macos"))]
+            tooltip: Some("SunTray".into()),
+            #[cfg(target_os = "macos")]
+            last_update: None,
         }),
         Err(error) => tracing::error!("failed to create tray icon: {error}"),
     }
@@ -56,21 +71,43 @@ pub(crate) fn update(cx: &mut App, value: Option<&str>, symbol: &str, tooltip: &
     if let Some(tray) = tray {
         #[cfg(target_os = "macos")]
         {
+            let update = MacTrayUpdate {
+                value: value.map(str::to_owned),
+                symbol: symbol.to_owned(),
+                tooltip: tooltip.to_owned(),
+            };
+            let changed = cx
+                .try_global::<TrayState>()
+                .map(|state| state.last_update.as_ref() != Some(&update))
+                .unwrap_or(true);
+            if !changed {
+                return;
+            }
             // AppKit renders status-item titles with the native menu-bar font.
             // Rasterizing the number into an NSImage makes it blurry and gives
             // it the wrong metrics, especially on Retina displays.
             let icon = value.is_none().then(|| icon_for(None, cx, symbol));
+            let mut update_succeeded = true;
             if let Err(error) = tray.set_macos_system_symbol(Some(symbol), cx) {
+                update_succeeded = false;
                 tracing::error!("failed to update macOS tray symbol: {error}");
             }
             if let Err(error) = tray.set_icon(icon, cx) {
+                update_succeeded = false;
                 tracing::error!("failed to update tray icon: {error}");
             }
             if let Err(error) = tray.set_title(value.map(str::to_owned), cx) {
+                update_succeeded = false;
                 tracing::error!("failed to update tray title: {error}");
             }
             if let Err(error) = tray.set_tooltip(Some(tooltip.to_owned()), cx) {
+                update_succeeded = false;
                 tracing::error!("failed to update tray tooltip: {error}");
+            }
+            if update_succeeded {
+                cx.update_global::<TrayState, _>(|state, _| {
+                    state.last_update = Some(update);
+                });
             }
         }
         #[cfg(not(target_os = "macos"))]
@@ -92,8 +129,17 @@ pub(crate) fn update(cx: &mut App, value: Option<&str>, symbol: &str, tooltip: &
                     Err(error) => tracing::error!("failed to update tray icon: {error}"),
                 }
             }
-            if let Err(error) = tray.set_tooltip(Some(tooltip.to_owned()), cx) {
-                tracing::error!("failed to update tray tooltip: {error}");
+            let tooltip_changed = cx
+                .try_global::<TrayState>()
+                .map(|state| state.tooltip.as_deref() != Some(tooltip))
+                .unwrap_or(true);
+            if tooltip_changed {
+                match tray.set_tooltip(Some(tooltip.to_owned()), cx) {
+                    Ok(()) => cx.update_global::<TrayState, _>(|state, _| {
+                        state.tooltip = Some(tooltip.to_owned());
+                    }),
+                    Err(error) => tracing::error!("failed to update tray tooltip: {error}"),
+                }
             }
         }
     }
@@ -130,7 +176,13 @@ fn quit(_: &Quit, cx: &mut App) {
     {
         controller.update(cx, |controller, _| controller.stop_polling());
     }
-    cx.quit();
+    cx.spawn(async move |cx| {
+        cx.background_executor()
+            .spawn(async { crate::storage::credentials::flush() })
+            .await;
+        cx.update(|app| app.quit());
+    })
+    .detach();
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -185,7 +237,7 @@ fn icon_for(value: Option<&str>, cx: &App, symbol: &str) -> Icon {
 
 #[cfg(not(target_os = "windows"))]
 fn fallback_icon() -> Icon {
-    let size = 16;
+    let size = 32;
     let mut rgba = vec![0; size * size * 4];
     for y in 4..28 {
         for x in 8..24 {

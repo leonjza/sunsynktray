@@ -1,7 +1,7 @@
 use crate::{
     app::MonitorState,
     app::{ConnectionState, Dashboard},
-    domain::{HistorySeries, InverterSummary},
+    domain::InverterSummary,
     ui::format::format_energy,
     ui::{history_chart as history_chart_module, power_flow as power_flow_view},
 };
@@ -34,7 +34,8 @@ pub(crate) fn render(
     if let ConnectionState::Error(error) = connection {
         return dashboard_placeholder(theme, entity, false, Some(error));
     }
-    let snapshot = state.snapshot();
+    let data = state.data_snapshot();
+    let snapshot = &data.snapshot;
     let live = matches!(
         connection,
         ConnectionState::Connected | ConnectionState::Stale
@@ -139,7 +140,7 @@ pub(crate) fn render(
                 )
                 .child(power_flow_view::render(
                     theme,
-                    &snapshot,
+                    snapshot,
                     live,
                     fetching,
                     entity.clone(),
@@ -147,7 +148,7 @@ pub(crate) fn render(
         )
         .child(history_chart(
             theme,
-            state.history(),
+            data.history,
             history_date,
             hovered_history,
             chart_bounds,
@@ -220,33 +221,15 @@ fn dashboard_placeholder(
         .into_any_element()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn history_chart(
     theme: &Theme,
-    history: Arc<Vec<HistorySeries>>,
+    history: crate::app::HistorySnapshot,
     date: chrono::NaiveDate,
     hovered: Option<usize>,
     chart_bounds: Arc<Mutex<Option<Bounds<Pixels>>>>,
     entity: Entity<Dashboard>,
 ) -> AnyElement {
-    let power_indices = history
-        .iter()
-        .enumerate()
-        .filter_map(|(index, series)| {
-            (!series.label.to_ascii_lowercase().contains("soc")).then_some(index)
-        })
-        .collect::<Vec<_>>();
-    let soc_indices = history
-        .iter()
-        .enumerate()
-        .filter_map(|(index, series)| {
-            series
-                .label
-                .to_ascii_lowercase()
-                .contains("soc")
-                .then_some(index)
-        })
-        .collect::<Vec<_>>();
-    let times = history_chart_module::times(&history);
     let previous = entity.clone();
     let next = entity.clone();
     let chart_entity = entity.clone();
@@ -256,18 +239,21 @@ fn history_chart(
         .w_full()
         .h(px(history_chart_module::HEIGHT))
         .child(history_chart_module::HistoryPlot {
-            history: history.clone(),
-            power_indices: power_indices.clone(),
-            soc_indices,
-            times: times.clone(),
+            history: history.series.clone(),
+            power_indices: history.power_indices.as_ref().clone(),
+            soc_indices: history.soc_indices.as_ref().clone(),
+            times: history.times.clone(),
             chart_bounds,
+            power_bounds: history.power_bounds,
         })
         .child(history_chart_module::hover_layer(
             theme,
-            &history,
-            &power_indices,
+            &history.series,
+            &history.power_indices,
+            &history.index,
+            history.power_bounds,
             entity.clone(),
-            &times,
+            &history.times,
             hovered,
         ));
     chart.interactivity().on_hover(move |is_hovered, _, cx| {
@@ -315,7 +301,7 @@ fn history_chart(
             div()
                 .h_flex()
                 .justify_end()
-                .child(history_chart_module::legend(theme, &history)),
+                .child(history_chart_module::legend(theme, &history.series)),
         )
         .into_any_element()
 }

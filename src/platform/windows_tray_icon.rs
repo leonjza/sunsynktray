@@ -6,12 +6,15 @@ use windows::{
         Foundation::{COLORREF, RECT},
         Graphics::Gdi::{
             CreateCompatibleDC, CreateDIBSection, CreateFontW, DeleteDC, DeleteObject, DrawTextW,
-            GetDC, GetDeviceCaps, ReleaseDC, SelectObject, SetBkMode, SetTextColor,
-            ANTIALIASED_QUALITY, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, CLIP_DEFAULT_PRECIS,
-            DEFAULT_CHARSET, DEFAULT_PITCH, DIB_RGB_COLORS, DT_CENTER, DT_NOPREFIX, DT_SINGLELINE,
-            DT_VCENTER, FF_DONTCARE, FW_SEMIBOLD, LOGPIXELSX, OUT_DEFAULT_PRECIS,
+            SelectObject, SetBkMode, SetTextColor, ANTIALIASED_QUALITY, BITMAPINFO,
+            BITMAPINFOHEADER, BI_RGB, CLIP_DEFAULT_PRECIS, DEFAULT_CHARSET, DEFAULT_PITCH,
+            DIB_RGB_COLORS, DT_CENTER, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, FF_DONTCARE,
+            FW_SEMIBOLD, OUT_DEFAULT_PRECIS,
         },
-        UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSMICON},
+        UI::{
+            HiDpi::{GetDpiForSystem, GetSystemMetricsForDpi},
+            WindowsAndMessaging::SM_CXSMICON,
+        },
     },
 };
 
@@ -44,16 +47,8 @@ pub(crate) fn render(value: Option<&str>, symbol: &str, cx: &App) -> Result<Icon
 }
 
 fn icon_size() -> i32 {
-    let reference = unsafe { GetDC(None) };
-    if reference.is_invalid() {
-        return 16;
-    }
-    let dpi = unsafe { GetDeviceCaps(Some(reference), LOGPIXELSX).max(96) } as f32 / 96.0;
-    unsafe {
-        ReleaseDC(None, reference);
-    }
-    let base = unsafe { GetSystemMetrics(SM_CXSMICON).max(16) } as f32;
-    ((base * dpi).round() as i32).max(16)
+    let dpi = unsafe { GetDpiForSystem() }.max(96);
+    unsafe { GetSystemMetricsForDpi(SM_CXSMICON, dpi).max(16) }
 }
 
 fn render_mask(size: i32, text: &str, dx: i32, dy: i32) -> Result<Vec<u8>, String> {
@@ -74,8 +69,16 @@ fn render_mask(size: i32, text: &str, dx: i32, dy: i32) -> Result<Vec<u8>, Strin
         return Err("could not create Windows text context".into());
     }
     let mut bits = std::ptr::null_mut();
-    let bitmap = unsafe { CreateDIBSection(None, &info, DIB_RGB_COLORS, &mut bits, None, 0) }
-        .map_err(|e| e.to_string())?;
+    let bitmap = match unsafe { CreateDIBSection(None, &info, DIB_RGB_COLORS, &mut bits, None, 0) }
+    {
+        Ok(bitmap) => bitmap,
+        Err(error) => {
+            unsafe {
+                let _ = DeleteDC(dc);
+            }
+            return Err(error.to_string());
+        }
+    };
     if bits.is_null() {
         unsafe {
             let _ = DeleteObject(bitmap.into());
@@ -111,6 +114,14 @@ fn render_mask(size: i32, text: &str, dx: i32, dy: i32) -> Result<Vec<u8>, Strin
             w!("Segoe UI Semibold"),
         )
     };
+    if font.is_invalid() {
+        unsafe {
+            SelectObject(dc, old_bitmap);
+            let _ = DeleteObject(bitmap.into());
+            let _ = DeleteDC(dc);
+        }
+        return Err("could not create Windows tray font".into());
+    }
     let old_font = unsafe { SelectObject(dc, font.into()) };
     unsafe {
         SetBkMode(dc, windows::Win32::Graphics::Gdi::TRANSPARENT);
@@ -123,13 +134,23 @@ fn render_mask(size: i32, text: &str, dx: i32, dy: i32) -> Result<Vec<u8>, Strin
         right: size + dx,
         bottom: size + dy,
     };
-    unsafe {
+    let drawn = unsafe {
         DrawTextW(
             dc,
             &mut wide,
             &mut rect,
             DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
         );
+    };
+    if drawn == 0 {
+        unsafe {
+            SelectObject(dc, old_font);
+            let _ = DeleteObject(font.into());
+            SelectObject(dc, old_bitmap);
+            let _ = DeleteObject(bitmap.into());
+            let _ = DeleteDC(dc);
+        }
+        return Err("could not draw Windows tray text".into());
     }
     let source =
         unsafe { std::slice::from_raw_parts(bits.cast::<u8>(), (size * size * 4) as usize) };
