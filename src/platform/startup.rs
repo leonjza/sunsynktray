@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 
 #[cfg(target_os = "windows")]
 const STARTUP_NAME: &str = "SunTray";
@@ -14,6 +14,7 @@ pub(crate) fn set_enabled(enabled: bool) -> Result<()> {
 #[cfg(target_os = "windows")]
 mod platform {
     use super::*;
+    use anyhow::Context;
     use std::io::ErrorKind;
     use std::path::PathBuf;
     use winreg::{enums::HKEY_CURRENT_USER, RegKey};
@@ -84,25 +85,28 @@ mod platform {
 #[cfg(target_os = "macos")]
 mod platform {
     use super::*;
-    use servicemanagement::{LoginItem, SMAppServiceStatus};
+    use objc2_foundation::NSString;
+    use objc2_service_management::{SMAppService, SMAppServiceStatus};
 
     const LOGIN_ITEM_IDENTIFIER: &str = "com.suntray.startup";
 
     pub(super) fn is_enabled() -> Result<bool> {
-        Ok(matches!(
-            LoginItem::new(LOGIN_ITEM_IDENTIFIER)?.status(),
-            SMAppServiceStatus::Enabled
-        ))
+        let identifier = NSString::from_str(LOGIN_ITEM_IDENTIFIER);
+        let app = unsafe { SMAppService::loginItemServiceWithIdentifier(&identifier) };
+        Ok(unsafe { app.status() } == SMAppServiceStatus::Enabled)
     }
 
     pub(super) fn set_enabled(enabled: bool) -> Result<()> {
-        let app = LoginItem::new(LOGIN_ITEM_IDENTIFIER)?;
+        let identifier = NSString::from_str(LOGIN_ITEM_IDENTIFIER);
+        let app = unsafe { SMAppService::loginItemServiceWithIdentifier(&identifier) };
         if enabled {
-            app.register()
-                .context("could not enable SunTray at startup")?;
+            unsafe { app.registerAndReturnError() }.map_err(|error| {
+                anyhow::anyhow!("could not enable SunTray at startup: {error:?}")
+            })?;
         } else {
-            app.unregister()
-                .context("could not disable SunTray at startup")?;
+            unsafe { app.unregisterAndReturnError() }.map_err(|error| {
+                anyhow::anyhow!("could not disable SunTray at startup: {error:?}")
+            })?;
         }
         Ok(())
     }

@@ -18,8 +18,8 @@ Build the release binary for the target platform, then run `cargo packager --rel
 
 On macOS, use `bash packaging/macos/package.sh aarch64-apple-darwin` to build
 the application bundle with its bundled `SunTrayStartup.app` login item. The
-startup setting registers that helper; it
-login item. That small helper launches the main app with `--startup`, so login
+startup setting registers that helper as a login item. That small helper launches
+the main app with `--startup`, so login
 launches remain hidden while normal launches still open the dashboard.
 
 ## Core dependency notes
