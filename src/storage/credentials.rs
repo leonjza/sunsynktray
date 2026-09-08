@@ -21,6 +21,8 @@ pub(crate) struct SavedCredentials {
     #[serde(default)]
     pub(crate) refresh_seconds: Option<u64>,
     #[serde(default)]
+    pub(crate) history_days: Option<u64>,
+    #[serde(default)]
     pub(crate) tray_metric: Option<String>,
     #[serde(default)]
     pub(crate) cached_snapshot: Option<crate::domain::EnergySnapshot>,
@@ -98,6 +100,7 @@ pub(crate) fn save(
     refresh_token: Option<&str>,
     selected_serial: Option<&str>,
     refresh_seconds: u64,
+    history_days: u64,
     tray_metric: Option<&str>,
 ) -> Result<()> {
     let _guard = keychain_lock()
@@ -116,6 +119,7 @@ pub(crate) fn save(
         refresh_token: refresh_token.map(str::to_owned),
         selected_serial,
         refresh_seconds: Some(refresh_seconds),
+        history_days: Some(history_days),
         tray_metric: tray_metric.map(str::to_owned).or_else(|| {
             existing
                 .as_ref()
@@ -188,18 +192,6 @@ pub(crate) fn save_cached_data(
     })
 }
 
-pub(crate) fn save_refresh_seconds(email: &str, refresh_seconds: u64) -> Result<()> {
-    update_record(Some(email), |record| {
-        let refresh_seconds = refresh_seconds.clamp(1, 3600);
-        if record.refresh_seconds == Some(refresh_seconds) {
-            false
-        } else {
-            record.refresh_seconds = Some(refresh_seconds);
-            true
-        }
-    })
-}
-
 type PersistenceTaskFn = Box<dyn FnOnce() + Send + 'static>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -208,7 +200,6 @@ enum PersistenceKey {
     Selection,
     TrayMetric,
     RefreshToken,
-    RefreshSeconds,
     CachedData,
     Flush,
 }
@@ -331,14 +322,6 @@ pub(crate) fn save_refresh_token_async(
     });
 }
 
-pub(crate) fn save_refresh_seconds_async(email: String, refresh_seconds: u64) {
-    enqueue_persistence(PersistenceKey::RefreshSeconds, move || {
-        if let Err(error) = save_refresh_seconds(&email, refresh_seconds) {
-            tracing::warn!(%error, "could not persist refresh interval");
-        }
-    });
-}
-
 pub(crate) fn save_cached_data_async(email: String, snapshot: crate::domain::EnergySnapshot) {
     enqueue_persistence(PersistenceKey::CachedData, move || {
         if let Err(error) = save_cached_data(&email, &snapshot) {
@@ -353,6 +336,7 @@ pub(crate) fn save_async(
     refresh_token: Option<String>,
     selected_serial: Option<String>,
     refresh_seconds: u64,
+    history_days: u64,
     tray_metric: Option<String>,
 ) {
     enqueue_persistence(PersistenceKey::Credentials, move || {
@@ -362,6 +346,7 @@ pub(crate) fn save_async(
             refresh_token.as_deref(),
             selected_serial.as_deref(),
             refresh_seconds,
+            history_days,
             tray_metric.as_deref(),
         ) {
             tracing::warn!(%error, "could not save SunSynk credentials");

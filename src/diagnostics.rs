@@ -69,19 +69,24 @@ pub(crate) fn run(args: &[String], settings: Settings) -> Result<()> {
                     )
                     .await?,
             );
-            responses.insert(
-                "plant_energy_day".into(),
-                client
-                    .inspect_endpoint(
-                        &format!("/api/v1/plant/energy/{plant_id}/day"),
-                        Some(&[
-                            ("lan", "en".into()),
-                            ("date", date.clone()),
-                            ("id", plant_id.to_string()),
-                        ]),
-                    )
-                    .await?,
-            );
+            for days_ago in [1_i64, 7, 30] {
+                let history_date = (Utc::now() - chrono::Duration::days(days_ago))
+                    .date_naive()
+                    .to_string();
+                responses.insert(
+                    format!("plant_energy_day_{days_ago}d"),
+                    client
+                        .inspect_endpoint(
+                            &format!("/api/v1/plant/energy/{plant_id}/day"),
+                            Some(&[
+                                ("lan", "en".into()),
+                                ("date", history_date),
+                                ("id", plant_id.to_string()),
+                            ]),
+                        )
+                        .await?,
+                );
+            }
             responses.insert(
                 "plant_energy_flow".into(),
                 client

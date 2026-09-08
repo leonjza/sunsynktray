@@ -31,6 +31,7 @@ fn main() -> Result<()> {
         tracing::info!("another SunTray instance is already running");
         return Ok(());
     };
+    let database = storage::database::Database::open()?;
     gpui_kit::application()
         .with_assets(assets::Assets)
         .run(move |cx| {
@@ -38,7 +39,7 @@ fn main() -> Result<()> {
             platform::configure_application_policy();
             gpui_kit::component::Theme::sync_system_appearance(None, cx);
             platform::tray::install(cx);
-            let state = app::MonitorState::new(settings.clone());
+            let state = app::MonitorState::new(settings.clone(), database.clone());
             cx.set_global(app::MonitorStateGlobal(state.clone()));
             let controller = cx.new(|_| app::MonitorController::new(state.clone()));
             cx.set_global(app::MonitorControllerGlobal(controller.clone()));

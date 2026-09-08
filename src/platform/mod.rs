@@ -1,6 +1,26 @@
 pub(crate) mod startup;
 pub(crate) mod tray;
 
+pub(crate) fn app_data_dir() -> anyhow::Result<std::path::PathBuf> {
+    #[cfg(target_os = "macos")]
+    let base = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .map(|path| path.join("Library/Application Support"));
+    #[cfg(target_os = "windows")]
+    let base = std::env::var_os("LOCALAPPDATA").map(std::path::PathBuf::from);
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let base = std::env::var_os("XDG_DATA_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .map(std::path::PathBuf::from)
+                .map(|path| path.join(".local/share"))
+        });
+
+    base.map(|path| path.join("SunTray"))
+        .ok_or_else(|| anyhow::anyhow!("could not determine the SunTray app-data directory"))
+}
+
 #[cfg(target_os = "macos")]
 pub(crate) fn configure_application_policy() {
     use objc2::MainThreadMarker;

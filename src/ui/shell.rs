@@ -1,12 +1,15 @@
-use crate::app::{Dashboard, Screen};
+use crate::app::{Dashboard, MonitorController, Screen};
 use gpui_kit::component::{
     button::{Button, ButtonVariants},
     ActiveTheme, Icon, IconName, Sizable, StyledExt, Theme,
 };
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
+use std::sync::{Arc, Mutex};
 
 pub(crate) struct StatusBar {
+    controller: Entity<MonitorController>,
+    connection_log_window: Arc<Mutex<Option<AnyWindowHandle>>>,
     screen: Screen,
     activity: String,
     fetching: bool,
@@ -19,13 +22,22 @@ pub(crate) struct StatusBar {
 
 impl Render for StatusBar {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        render_status_bar(cx.theme(), self.screen, &self.activity, self.fetching)
+        render_status_bar(
+            cx.theme(),
+            self.screen,
+            &self.activity,
+            self.fetching,
+            self.controller.clone(),
+            self.connection_log_window.clone(),
+        )
     }
 }
 
 impl StatusBar {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(controller: Entity<MonitorController>) -> Self {
         Self {
+            controller,
+            connection_log_window: Arc::new(Mutex::new(None)),
             screen: Screen::Dashboard,
             activity: "Starting…".into(),
             fetching: false,
@@ -130,6 +142,8 @@ fn render_status_bar(
     screen: Screen,
     activity: &str,
     fetching: bool,
+    controller: Entity<MonitorController>,
+    connection_log_window: Arc<Mutex<Option<AnyWindowHandle>>>,
 ) -> impl IntoElement {
     let show_activity = screen == Screen::Dashboard
         || fetching
@@ -139,7 +153,7 @@ fn render_status_bar(
         || activity.starts_with("Polling stopped");
     div()
         .h_flex()
-        .h(px(28.))
+        .h(px(36.))
         .px_4()
         .items_center()
         .border_t_1()
@@ -152,5 +166,20 @@ fn render_status_bar(
             "Settings".to_owned()
         })
         .child(div().flex_1())
+        .child(
+            Button::new("connection-log")
+                .icon(IconName::FileText)
+                .accessibility_label("Open connection log")
+                .tooltip("Connection log")
+                .ghost()
+                .xsmall()
+                .on_click(move |_, _, cx| {
+                    crate::app::open_connection_log_window(
+                        cx,
+                        controller.clone(),
+                        connection_log_window.clone(),
+                    );
+                }),
+        )
         .child(format!("v{}", env!("CARGO_PKG_VERSION")))
 }

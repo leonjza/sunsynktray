@@ -100,24 +100,6 @@ pub(super) fn history_item(value: &Value) -> Option<HistorySeries> {
     (!label.is_empty() && !points.is_empty()).then_some(HistorySeries { label, points })
 }
 
-/// Plant day records are five-minute average power values. Some accounts do
-/// not return a solar-energy counter from plant realtime, so derive the daily
-/// solar yield from the same series the web chart displays.
-pub(super) fn daily_solar_yield_from_history(history: &[HistorySeries]) -> Option<f64> {
-    let series = history.iter().find(|series| {
-        let label = series.label.to_ascii_lowercase();
-        label == "pv" || label.contains("solar")
-    })?;
-    (!series.points.is_empty()).then(|| {
-        let watts = series
-            .points
-            .iter()
-            .map(|point| point.watts.max(0.0))
-            .sum::<f64>();
-        watts * (5.0 / 60.0) / 1000.0
-    })
-}
-
 pub(super) fn first_number(value: &Map<String, Value>, keys: &[&str]) -> Option<f64> {
     keys.iter().find_map(|key| optional_number(value, key))
 }
@@ -227,7 +209,6 @@ pub(super) fn flag(value: &Map<String, Value>, key: &str) -> Option<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{HistoryPoint, HistorySeries};
     use serde_json::json;
 
     #[test]
@@ -305,23 +286,5 @@ mod tests {
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].label, "PV");
         assert_eq!(history[0].points[0].watts, 123.0);
-    }
-
-    #[test]
-    fn daily_solar_yield_can_be_derived_from_five_minute_day_records() {
-        let history = vec![HistorySeries {
-            label: "PV".into(),
-            points: vec![
-                HistoryPoint {
-                    time: "00:00".into(),
-                    watts: 600.0,
-                },
-                HistoryPoint {
-                    time: "00:05".into(),
-                    watts: 600.0,
-                },
-            ],
-        }];
-        assert_eq!(daily_solar_yield_from_history(&history), Some(0.1));
     }
 }

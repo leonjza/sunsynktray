@@ -3,11 +3,23 @@ use anyhow::{anyhow, bail, Context, Result};
 use reqwest::Client;
 use serde_json::Value;
 use std::{
-    sync::Arc,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex,
+    },
     time::{Duration, Instant},
 };
 
 type ProgressCallback = Arc<dyn Fn(&str) + Send + Sync>;
+type RequestLogCallback = Arc<dyn Fn(String) + Send + Sync>;
+static REQUEST_ID: AtomicU64 = AtomicU64::new(1);
+
+#[derive(Default)]
+pub(crate) struct AuthState {
+    pub(crate) access_token: Option<String>,
+    pub(crate) refresh_token: Option<String>,
+    pub(crate) access_expires_at: Option<Instant>,
+}
 
 #[derive(Clone)]
 pub(crate) struct SunsynkClient {
@@ -15,10 +27,10 @@ pub(crate) struct SunsynkClient {
     pub(crate) base_url: String,
     pub(crate) username: String,
     pub(crate) password: String,
-    pub(crate) access_token: Option<String>,
-    pub(crate) refresh_token: Option<String>,
-    pub(crate) access_expires_at: Option<Instant>,
+    pub(crate) auth: Arc<Mutex<AuthState>>,
+    pub(crate) auth_refresh: Arc<tokio::sync::Mutex<()>>,
     pub(crate) progress: Option<ProgressCallback>,
+    pub(crate) request_log: Option<RequestLogCallback>,
 }
 
 impl SunsynkClient {
@@ -31,20 +43,36 @@ impl SunsynkClient {
             base_url: base_url.trim_end_matches('/').into(),
             username,
             password,
-            access_token: None,
-            refresh_token: None,
-            access_expires_at: None,
+            auth: Arc::new(Mutex::new(AuthState::default())),
+            auth_refresh: Arc::new(tokio::sync::Mutex::new(())),
             progress: None,
+            request_log: None,
         })
     }
 
-    pub(crate) fn with_refresh_token(mut self, token: Option<String>) -> Self {
-        self.refresh_token = token;
+    pub(crate) fn with_refresh_token(self, token: Option<String>) -> Self {
+        self.auth
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .refresh_token = token;
         self
     }
 
-    pub(crate) fn refresh_token(&self) -> Option<&str> {
-        self.refresh_token.as_deref()
+    pub(crate) fn auth_state(&self) -> Arc<Mutex<AuthState>> {
+        Arc::clone(&self.auth)
+    }
+
+    pub(crate) fn with_auth_state(mut self, auth: Arc<Mutex<AuthState>>) -> Self {
+        self.auth = auth;
+        self
+    }
+
+    pub(crate) fn refresh_token(&self) -> Option<String> {
+        self.auth
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .refresh_token
+            .clone()
     }
 
     pub(crate) fn with_progress<F>(mut self, progress: F) -> Self
@@ -61,12 +89,24 @@ impl SunsynkClient {
         }
     }
 
-    pub(crate) async fn ensure_authenticated(&mut self) -> Result<()> {
-        if self.access_token.is_none()
-            || self.access_expires_at.is_some_and(|expires| {
-                expires.saturating_duration_since(Instant::now()) <= Duration::from_secs(30)
-            })
-        {
+    pub(crate) fn with_request_log<F>(mut self, callback: F) -> Self
+    where
+        F: Fn(String) + Send + Sync + 'static,
+    {
+        self.request_log = Some(Arc::new(callback));
+        self
+    }
+
+    pub(crate) async fn ensure_authenticated(&self) -> Result<()> {
+        let _refresh_guard = self.auth_refresh.lock().await;
+        let needs_auth = {
+            let auth = self.auth.lock().unwrap_or_else(|error| error.into_inner());
+            auth.access_token.is_none()
+                || auth.access_expires_at.is_some_and(|expires| {
+                    expires.saturating_duration_since(Instant::now()) <= Duration::from_secs(30)
+                })
+        };
+        if needs_auth {
             self.authenticate().await?;
         }
         Ok(())
@@ -74,11 +114,7 @@ impl SunsynkClient {
 
     /// Fetch a raw authenticated response for the opt-in API inspection tool.
     /// Normal application code should use the typed methods instead.
-    pub(crate) async fn get(
-        &mut self,
-        path: &str,
-        params: Option<&[(&str, String)]>,
-    ) -> Result<Value> {
+    pub(crate) async fn get(&self, path: &str, params: Option<&[(&str, String)]>) -> Result<Value> {
         self.ensure_authenticated().await?;
         match self.get_authenticated(path, params).await {
             Err(error)
@@ -86,7 +122,10 @@ impl SunsynkClient {
                     .chain()
                     .any(|cause| cause.downcast_ref::<AuthenticationExpired>().is_some()) =>
             {
-                self.access_token = None;
+                self.auth
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .access_token = None;
                 self.ensure_authenticated()
                     .await
                     .with_context(|| format!("re-authenticating before GET {path}"))?;
@@ -115,15 +154,15 @@ impl SunsynkClient {
             .with_context(|| format!("GET {path}"))?;
         if response.get("success").and_then(Value::as_bool) != Some(true) {
             if response_indicates_expired(&response) {
+                self.log_request(format!("GET {path} rejected: authentication expired"));
                 return Err(anyhow!(AuthenticationExpired));
             }
-            bail!(
-                "GET {path}: {}",
-                response
-                    .get("msg")
-                    .and_then(Value::as_str)
-                    .unwrap_or("SunSynk API request failed")
-            );
+            let message = response
+                .get("msg")
+                .and_then(Value::as_str)
+                .unwrap_or("SunSynk API request failed");
+            self.log_request(format!("GET {path} rejected by API: {message}"));
+            bail!("GET {path}: {}", message);
         }
         Ok(response)
     }
@@ -135,11 +174,20 @@ impl SunsynkClient {
         params: Option<&[(&str, String)]>,
         json: Option<&Value>,
     ) -> Result<Value> {
+        let request_id = REQUEST_ID.fetch_add(1, Ordering::Relaxed);
+        let started = Instant::now();
+        const MAX_REQUEST_DURATION: Duration = Duration::from_secs(60);
         let mut request = self
             .http
             .request(method.parse()?, format!("{}{}", self.base_url, path))
             .header("Accept", "application/json");
-        if let Some(token) = &self.access_token {
+        if let Some(token) = self
+            .auth
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .access_token
+            .clone()
+        {
             request = request.bearer_auth(token);
         }
         if let Some(params) = params {
@@ -149,29 +197,89 @@ impl SunsynkClient {
             request = request.json(json);
         }
         for attempt in 0..3 {
-            let response = request
-                .try_clone()
-                .ok_or_else(|| anyhow!("could not clone SunSynk request"))?
-                .send()
-                .await
-                .with_context(|| format!("sending {method} {path}"))?;
+            let Some(remaining) = MAX_REQUEST_DURATION.checked_sub(started.elapsed()) else {
+                let error = anyhow!("SunSynk request deadline exceeded for {method} {path}");
+                self.log_request(format!("#{request_id} {method} {path} timed out after 60s"));
+                return Err(error);
+            };
+            let response = match tokio::time::timeout(
+                remaining,
+                request
+                    .try_clone()
+                    .ok_or_else(|| anyhow!("could not clone SunSynk request"))?
+                    .send(),
+            )
+            .await
+            {
+                Ok(Ok(response)) => response,
+                Ok(Err(error)) => {
+                    self.log_request(format!(
+                        "#{request_id} {method} {path} failed after {}ms: {error}",
+                        started.elapsed().as_millis()
+                    ));
+                    return Err(error).with_context(|| format!("sending {method} {path}"));
+                }
+                Err(_) => {
+                    let error = anyhow!("SunSynk request deadline exceeded for {method} {path}");
+                    self.log_request(format!(
+                        "#{request_id} {method} {path} timed out after {}ms",
+                        started.elapsed().as_millis()
+                    ));
+                    return Err(error);
+                }
+            };
             if is_transient_status(response.status()) && attempt < 2 {
-                tokio::time::sleep(retry_delay(response.headers(), attempt)).await;
+                self.log_request(format!(
+                    "#{request_id} {method} {path} attempt {} got {} · retrying",
+                    attempt + 1,
+                    response.status()
+                ));
+                let delay = retry_delay(response.headers(), attempt).min(remaining);
+                tokio::time::sleep(delay).await;
                 continue;
             }
             if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+                self.log_request(format!(
+                    "#{request_id} {method} {path} failed with 401 after {}ms",
+                    started.elapsed().as_millis()
+                ));
                 return Err(anyhow!(AuthenticationExpired));
+            }
+            let status = response.status();
+            if !status.is_success() {
+                self.log_request(format!(
+                    "#{request_id} {method} {path} failed with {status} after {}ms",
+                    started.elapsed().as_millis()
+                ));
             }
             let response = response
                 .error_for_status()
                 .with_context(|| format!("SunSynk returned an HTTP error for {method} {path}"))?;
-            let body: Value = response
-                .json()
-                .await
-                .with_context(|| format!("decoding SunSynk response for {method} {path}"))?;
+            let body: Value = match response.json().await {
+                Ok(body) => body,
+                Err(error) => {
+                    self.log_request(format!(
+                        "#{request_id} {method} {path} returned invalid JSON after {}ms: {error}",
+                        started.elapsed().as_millis()
+                    ));
+                    return Err(error)
+                        .with_context(|| format!("decoding SunSynk response for {method} {path}"));
+                }
+            };
+            self.log_request(format!(
+                "#{request_id} {method} {path} succeeded with {} after {}ms",
+                status,
+                started.elapsed().as_millis()
+            ));
             return Ok(body);
         }
         unreachable!("bounded HTTP retry loop must return")
+    }
+
+    fn log_request(&self, event: String) {
+        if let Some(callback) = &self.request_log {
+            callback(event);
+        }
     }
 }
 

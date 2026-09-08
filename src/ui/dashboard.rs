@@ -1,14 +1,15 @@
 use crate::{
     app::MonitorState,
-    app::{ConnectionState, Dashboard},
+    app::{ConnectionState, Dashboard, HistorySource},
     domain::InverterSummary,
     ui::format::format_energy,
     ui::{history_chart as history_chart_module, power_flow as power_flow_view},
 };
 use gpui_kit::component::{
     button::{Button, ButtonVariants},
+    date_picker::{DatePicker, DatePickerState},
     spinner::Spinner,
-    IconName, Sizable, StyledExt, Theme,
+    FocusableExt, IconName, Sizable, StyledExt, Theme,
 };
 use gpui_kit::*;
 use std::sync::{Arc, Mutex};
@@ -19,7 +20,8 @@ pub(crate) fn render(
     state: &MonitorState,
     connection: &ConnectionState,
     fetching: bool,
-    history_date: chrono::NaiveDate,
+    history_date_picker: Entity<DatePickerState>,
+    history_source: HistorySource,
     hovered_history: Option<usize>,
     chart_bounds: Arc<Mutex<Option<Bounds<Pixels>>>>,
     selected_inverter: Option<&InverterSummary>,
@@ -36,10 +38,7 @@ pub(crate) fn render(
     }
     let data = state.data_snapshot();
     let snapshot = &data.snapshot;
-    let live = matches!(
-        connection,
-        ConnectionState::Connected | ConnectionState::Stale
-    );
+    let live = matches!(connection, ConnectionState::Connected);
     let refresh_entity = entity.clone();
     let identity = selected_inverter.map(|inverter| {
         let name = if !inverter.alias.is_empty() && inverter.alias != inverter.serial {
@@ -149,7 +148,8 @@ pub(crate) fn render(
         .child(history_chart(
             theme,
             data.history,
-            history_date,
+            history_date_picker,
+            history_source,
             hovered_history,
             chart_bounds,
             entity,
@@ -225,7 +225,8 @@ fn dashboard_placeholder(
 fn history_chart(
     theme: &Theme,
     history: crate::app::HistorySnapshot,
-    date: chrono::NaiveDate,
+    history_date_picker: Entity<DatePickerState>,
+    source: HistorySource,
     hovered: Option<usize>,
     chart_bounds: Arc<Mutex<Option<Bounds<Pixels>>>>,
     entity: Entity<Dashboard>,
@@ -243,6 +244,7 @@ fn history_chart(
             power_indices: history.power_indices.as_ref().clone(),
             soc_indices: history.soc_indices.as_ref().clone(),
             times: history.times.clone(),
+            time_indices: history.time_indices.clone(),
             chart_bounds,
             power_bounds: history.power_bounds,
         })
@@ -277,22 +279,36 @@ fn history_chart(
                 .child(div().flex_1())
                 .child(
                     Button::new("previous-day")
-                        .label("‹")
+                        .accessibility_label("Previous day")
+                        .tooltip("Previous day")
+                        .icon(IconName::ChevronLeft)
+                        .small()
+                        .w(px(28.))
                         .ghost()
-                        .xsmall()
-                        .on_click(move |_, _, cx| {
-                            previous
-                                .update(cx, |dashboard, cx| dashboard.change_history_day(-1, cx));
+                        .on_click(move |_, window, cx| {
+                            previous.update(cx, |dashboard, cx| {
+                                dashboard.change_history_day(-1, window, cx)
+                            });
                         }),
                 )
-                .child(div().text_xs().child(date.to_string()))
+                .child(
+                    DatePicker::new(&history_date_picker)
+                        .small()
+                        .w(px(126.))
+                        .focus_ring(false),
+                )
                 .child(
                     Button::new("next-day")
-                        .label("›")
+                        .accessibility_label("Next day")
+                        .tooltip("Next day")
+                        .icon(IconName::ChevronRight)
+                        .small()
+                        .w(px(28.))
                         .ghost()
-                        .xsmall()
-                        .on_click(move |_, _, cx| {
-                            next.update(cx, |dashboard, cx| dashboard.change_history_day(1, cx));
+                        .on_click(move |_, window, cx| {
+                            next.update(cx, |dashboard, cx| {
+                                dashboard.change_history_day(1, window, cx)
+                            });
                         }),
                 ),
         )
@@ -300,8 +316,27 @@ fn history_chart(
         .child(
             div()
                 .h_flex()
+                .items_center()
+                .gap_2()
                 .justify_end()
+                .child(history_source_badge(theme, source))
+                .child(div().h(px(14.)).w(px(1.)).bg(theme.border))
                 .child(history_chart_module::legend(theme, &history.series)),
         )
         .into_any_element()
+}
+
+fn history_source_badge(theme: &Theme, source: HistorySource) -> impl IntoElement {
+    let (label, color, background) = match source {
+        HistorySource::Cached => ("Cached", theme.muted_foreground, theme.muted),
+        HistorySource::Network => ("Network", rgb(0x22c55e).into(), rgb(0x123b25).into()),
+    };
+    div()
+        .px_1()
+        .py_0()
+        .rounded_full()
+        .bg(background)
+        .text_xs()
+        .text_color(color)
+        .child(label)
 }

@@ -55,6 +55,15 @@ now_ms() {
   echo "$(( $(date +%s) * 1000 ))"
 }
 
+utc_date_days_ago() {
+  local days_ago="$1"
+  if date -u -v-"${days_ago}"d +%F >/dev/null 2>&1; then
+    date -u -v-"${days_ago}"d +%F
+  else
+    date -u -d "${days_ago} days ago" +%F
+  fi
+}
+
 echo "[*] Using BASE_URL=${BASE_URL}"
 echo "[*] Fetching public key..."
 
@@ -123,14 +132,23 @@ echo "$flow_json" | jq -e '
 
 echo "[+] Power flow response OK for ${date_utc}"
 
-echo "[*] Fetching day energy..."
-day_json=$(curl -sS -H "${auth_header[@]}" "${BASE_URL}/api/v1/plant/energy/${plant_id}/day?lan=en&date=${date_utc}&id=${plant_id}")
+for days_ago in 1 7 30; do
+  history_date=$(utc_date_days_ago "$days_ago")
+  echo "[*] Fetching day energy for ${history_date}..."
+  day_json=$(curl -sS -H "${auth_header[@]}" "${BASE_URL}/api/v1/plant/energy/${plant_id}/day?lan=en&date=${history_date}&id=${plant_id}")
 
-echo "$day_json" | jq -e '
-  (.data.infos | length) > 0 and
-  (.data.infos[] | has("unit") and has("label") and (.records | length) >= 0 and (.records[]? | has("time") and has("value") and has("updateTime")))
-' >/dev/null
+  echo "$day_json" | jq -e '
+    (.success == true) and
+    (.data | type == "object") and
+    (.data.infos | type == "array") and
+    (.data.infos | length) > 0 and
+    ([.data.infos[] | select((.records | type) == "array") | .records[]? | select(has("time") and has("value") and has("updateTime"))] | length) > 0
+  ' >/dev/null
 
-echo "[+] Day energy response OK for ${date_utc}"
+  series_count=$(echo "$day_json" | jq '[.data.infos[] | select((.records | type) == "array" and (.records | length) > 0)] | length')
+  record_count=$(echo "$day_json" | jq '[.data.infos[]?.records[]? | select(has("time") and has("value") and has("updateTime"))] | length')
+  labels=$(echo "$day_json" | jq -r '[.data.infos[] | select((.records | type) == "array" and (.records | length) > 0) | .label] | join(", ")')
+  echo "[+] Day energy response OK for ${history_date}: ${series_count} series, ${record_count} records (${labels})"
+done
 
 echo "[✓] API smoke test completed successfully."

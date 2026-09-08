@@ -46,7 +46,7 @@ pub(crate) fn render(
                 ))
                 .child(flow_node(
                     theme,
-                    Icon::empty().path("icons/battery.svg"),
+                    Icon::empty().path("icons/battery-vertical.svg"),
                     "Battery",
                     format!("{:.0}%", snapshot.battery_soc),
                     snapshot.battery_watts.abs() > 1.,

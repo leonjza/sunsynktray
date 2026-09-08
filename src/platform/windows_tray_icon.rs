@@ -169,7 +169,7 @@ fn render_mask(size: i32, text: &str, dx: i32, dy: i32) -> Result<Vec<u8>, Strin
 }
 
 fn metric_color(value: &str, symbol: &str) -> (u8, u8, u8) {
-    if symbol == "battery.100" {
+    if symbol.starts_with("battery") {
         if let Ok(soc) = value.trim().trim_end_matches('%').parse::<f64>() {
             let soc = soc.clamp(0.0, 100.0);
             return if soc >= 80.0 {

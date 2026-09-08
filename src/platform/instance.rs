@@ -10,7 +10,14 @@ pub(crate) struct InstanceLock {
 impl InstanceLock {
     /// Attempts to acquire the lock, returning `None` if another instance owns it.
     pub(crate) fn acquire() -> Result<Option<Self>> {
-        Self::acquire_at(&lock_path())
+        let directory = crate::platform::app_data_dir()?;
+        std::fs::create_dir_all(&directory).with_context(|| {
+            format!(
+                "could not create instance-lock directory {}",
+                directory.display()
+            )
+        })?;
+        Self::acquire_at(&directory.join("SunTray.instance.lock"))
     }
 
     fn acquire_at(path: &PathBuf) -> Result<Option<Self>> {
@@ -54,19 +61,6 @@ fn lock_is_unavailable(error: &std::io::Error) -> bool {
     {
         false
     }
-}
-
-fn lock_path() -> PathBuf {
-    #[cfg(unix)]
-    {
-        if let Some(runtime_dir) = std::env::var_os("XDG_RUNTIME_DIR") {
-            return PathBuf::from(runtime_dir).join("SunTray.instance.lock");
-        }
-        if let Some(home_dir) = std::env::var_os("HOME") {
-            return PathBuf::from(home_dir).join(".suntray.instance.lock");
-        }
-    }
-    std::env::temp_dir().join("SunTray.instance.lock")
 }
 
 #[cfg(test)]

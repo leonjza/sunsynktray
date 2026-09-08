@@ -8,7 +8,7 @@ use crate::{
 };
 use gpui_kit::*;
 
-use super::{ConnectionState, MonitorController};
+use super::{ConnectionState, HistorySource, MonitorController};
 
 pub(super) fn is_fetch_command(command: &PollCommand) -> bool {
     matches!(command, PollCommand::Refresh | PollCommand::Select(_, _))
@@ -19,6 +19,17 @@ pub(super) fn should_queue_command(command: &PollCommand, fetching: bool) -> boo
 }
 
 impl MonitorController {
+    pub(crate) fn toggle_backfill(&mut self, cx: &mut Context<Self>) {
+        let command = if self.backfill_running {
+            PollCommand::PauseBackfill
+        } else {
+            PollCommand::ResumeBackfill
+        };
+        let _ = self.send_poll_command(command, cx);
+    }
+}
+
+impl MonitorController {
     pub(crate) fn apply_live_data(
         &mut self,
         snapshot: EnergySnapshot,
@@ -26,12 +37,33 @@ impl MonitorController {
         history: Option<Vec<HistorySeries>>,
         cx: &mut Context<Self>,
     ) {
+        let was_connected = matches!(self.connection, ConnectionState::Connected);
         if !self.history_is_manual {
             self.history_date = chrono::Local::now().date_naive();
+        }
+        let snapshot_serial = snapshot.inverter_sn.clone();
+        if let Some(history) = &history {
+            self.cache_history(
+                snapshot_serial.clone(),
+                chrono::Local::now().date_naive(),
+                history.clone(),
+                HistorySource::Network,
+            );
         }
         self.state.set_snapshot(snapshot);
         self.has_cached_data = true;
         if let Some((email, _)) = &self.credentials {
+            if let Some(history) = &history {
+                self.state.database.save_history(
+                    email.clone(),
+                    snapshot_serial,
+                    chrono::Local::now().date_naive().to_string(),
+                    history.clone(),
+                );
+            }
+            self.state
+                .database
+                .save_snapshot(email.clone(), self.state.snapshot());
             credentials::save_cached_data_async(email.clone(), self.state.snapshot());
         }
         let previous_refresh_token = self.refresh_token.clone();
@@ -48,8 +80,12 @@ impl MonitorController {
         }
         if !self.history_is_manual {
             if let Some(history) = history {
+                self.history_source = HistorySource::Network;
                 self.state.set_history(history);
             }
+        }
+        if !was_connected {
+            self.record_connection_event("Live connection restored");
         }
         self.connection = ConnectionState::Connected;
         self.update_tray(cx);
@@ -72,8 +108,12 @@ impl MonitorController {
         );
     }
 
-    pub(crate) fn apply_history(&mut self, history: Vec<HistorySeries>) {
+    pub(crate) fn apply_history(&mut self, history: Vec<HistorySeries>, source: HistorySource) {
+        if let Some(serial) = self.selected_serial.clone() {
+            self.cache_history(serial, self.history_date, history.clone(), source);
+        }
         self.state.set_history(history);
+        self.history_source = source;
         self.history_previous_date = None;
         self.fetching = false;
         self.refresh_generation = self.refresh_generation.wrapping_add(1);
@@ -85,6 +125,7 @@ impl MonitorController {
     }
 
     pub(crate) fn apply_stopped(&mut self, error: String, cx: &mut Context<Self>) {
+        self.record_connection_event(format!("Polling stopped: {error}"));
         self.polling = false;
         self.poll_sender = None;
         self.poll_cancel = None;
@@ -117,12 +158,15 @@ impl MonitorController {
                     .find(|inverter| &inverter.serial == serial)
                     .and_then(|inverter| inverter.plant_id)
             }),
-            self.refresh_token.clone(),
+            self.auth_state.clone(),
         );
         let Some((email, password)) = details.1 else {
             return;
         };
         let Some(serial) = details.2 else {
+            return;
+        };
+        let Some(auth) = details.4 else {
             return;
         };
         self.polling = true;
@@ -132,10 +176,15 @@ impl MonitorController {
                 base_url: details.0,
                 email,
                 password,
+                auth,
                 serial,
                 plant_id: details.3,
-                refresh_token: details.4,
                 interval_seconds: interval,
+                history_days: self.history_days,
+                database: self.state.database.clone(),
+                connection_log: self.connection_log.clone(),
+                connection_log_revision: self.connection_log_revision.clone(),
+                connection_log_signal: self.connection_log_signal.clone(),
             });
         self.poll_sender = Some(command_sender);
         self.poll_cancel = Some(cancel_sender);
@@ -150,6 +199,7 @@ impl MonitorController {
                         match result {
                             ConnectResult::PollStarted => {
                                 controller.fetching = true;
+                                controller.next_refresh_in = Some(controller.refresh_seconds);
                                 controller.activity = "Fetching new data…".into();
                             }
                             ConnectResult::Progress {
@@ -162,8 +212,8 @@ impl MonitorController {
                                 controller.fetching = true;
                                 controller.activity = message;
                             }
-                            ConnectResult::History(history) => {
-                                controller.apply_history(history);
+                            ConnectResult::History { history, source } => {
+                                controller.apply_history(history, source);
                             }
                             ConnectResult::Snapshot {
                                 snapshot,
@@ -171,6 +221,19 @@ impl MonitorController {
                                 history,
                             } => {
                                 controller.apply_snapshot(snapshot, refresh_token, history, cx);
+                            }
+                            ConnectResult::BackfillProgress {
+                                completed,
+                                total,
+                                running,
+                                detail,
+                                next_request_in,
+                            } => {
+                                controller.backfill_completed = completed;
+                                controller.backfill_total = total;
+                                controller.backfill_running = running;
+                                controller.backfill_detail = detail;
+                                controller.backfill_next_request_in = next_request_in;
                             }
                             ConnectResult::Failure {
                                 generation,
@@ -180,6 +243,8 @@ impl MonitorController {
                                 if controller.poll_generation != generation {
                                     return;
                                 }
+                                controller
+                                    .record_connection_event(format!("Refresh failed: {error}"));
                                 controller.connection = if controller.has_cached_data {
                                     ConnectionState::Stale
                                 } else {
@@ -279,12 +344,29 @@ impl MonitorController {
         }
     }
 
+    pub(crate) fn reconnect(
+        &mut self,
+        email: String,
+        password: String,
+        refresh_seconds: u64,
+        history_days: u64,
+        cx: &mut Context<Self>,
+    ) {
+        self.refresh_seconds = refresh_seconds.clamp(1, 3600);
+        self.history_days = history_days.clamp(1, 3650);
+        self.connect(email, password, cx);
+    }
+
     pub(crate) fn change_history_day(&mut self, offset: i64, cx: &mut Context<Self>) {
+        let date = self.history_date + chrono::Duration::days(offset);
+        self.select_history_date(date, cx);
+    }
+
+    pub(crate) fn select_history_date(&mut self, date: chrono::NaiveDate, cx: &mut Context<Self>) {
         if self.fetching {
             return;
         }
         let today = chrono::Local::now().date_naive();
-        let date = self.history_date + chrono::Duration::days(offset);
         if date > today || date == self.history_date {
             return;
         }
@@ -296,6 +378,21 @@ impl MonitorController {
         self.history_previous_date = Some(self.history_date);
         self.history_date = date;
         self.history_is_manual = date != today;
+        if let Some(serial) = self.selected_serial.as_ref() {
+            let cached = self.history_cache.get(&(serial.clone(), date)).cloned();
+            if let Some((history, source)) = cached {
+                self.history_cache_order
+                    .retain(|key| key != &(serial.clone(), date));
+                self.history_cache_order.push_back((serial.clone(), date));
+                self.state.set_history(history);
+                self.history_source = source;
+                self.history_previous_date = None;
+                self.activity = "Historical data loaded from cache".into();
+                self.refresh_generation = self.refresh_generation.wrapping_add(1);
+                cx.notify();
+                return;
+            }
+        }
         let queued = self
             .poll_sender
             .as_ref()

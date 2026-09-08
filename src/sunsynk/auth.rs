@@ -8,7 +8,7 @@ use serde_json::Value;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 impl SunsynkClient {
-    pub(crate) async fn connect(&mut self) -> Result<()> {
+    pub(crate) async fn connect(&self) -> Result<()> {
         self.report_progress("Fetching SunSynk public key…");
         let public_key = self.public_key().await?;
         // The web app currently returns base64-encoded DER (SubjectPublicKeyInfo),
@@ -34,20 +34,19 @@ impl SunsynkClient {
         self.report_progress("Logging in to SunSynk…");
         let body = self.request("POST", "/oauth/token/new", None, Some(&serde_json::json!({ "username": self.username, "password": BASE64.encode(encrypted), "grant_type": "password", "client_id": "csp-web", "source": "sunsynk", "nonce": nonce, "sign": sign }))).await?;
         let data = body.get("data").cloned().unwrap_or(Value::Null);
-        self.access_token = data
+        let access_token = data
             .get("access_token")
             .and_then(Value::as_str)
             .map(str::to_owned);
-        self.access_expires_at = data
+        let access_expires_at = data
             .get("expires_in")
             .and_then(unsigned)
             .map(|seconds| Instant::now() + Duration::from_secs(seconds));
-        self.refresh_token = data
+        let refresh_token = data
             .get("refresh_token")
             .and_then(Value::as_str)
             .map(str::to_owned);
-        if body.get("success").and_then(Value::as_bool) != Some(true) || self.access_token.is_none()
-        {
+        if body.get("success").and_then(Value::as_bool) != Some(true) || access_token.is_none() {
             bail!(
                 "{}",
                 body.get("msg")
@@ -55,6 +54,10 @@ impl SunsynkClient {
                     .unwrap_or("SunSynk rejected the login")
             );
         }
+        let mut auth = self.auth.lock().unwrap_or_else(|error| error.into_inner());
+        auth.access_token = access_token;
+        auth.access_expires_at = access_expires_at;
+        auth.refresh_token = refresh_token;
         Ok(())
     }
 
@@ -81,13 +84,16 @@ impl SunsynkClient {
             .map(str::to_owned)
             .ok_or_else(|| anyhow!("SunSynk did not return a public key"))
     }
-    pub(crate) async fn authenticate(&mut self) -> Result<()> {
-        if let Some(token) = self.refresh_token.clone() {
+    pub(crate) async fn authenticate(&self) -> Result<()> {
+        if let Some(token) = self.refresh_token() {
             self.report_progress("Refreshing SunSynk access token…");
             match self.refresh(&token).await {
                 Ok(()) => return Ok(()),
                 Err(error) if error.downcast_ref::<RefreshTokenRejected>().is_some() => {
-                    self.access_token = None;
+                    self.auth
+                        .lock()
+                        .unwrap_or_else(|error| error.into_inner())
+                        .access_token = None;
                 }
                 Err(error) => {
                     return Err(error).context("refreshing the SunSynk access token");
@@ -97,7 +103,7 @@ impl SunsynkClient {
         self.connect().await.context("authenticating with SunSynk")
     }
 
-    async fn refresh(&mut self, token: &str) -> Result<()> {
+    async fn refresh(&self, token: &str) -> Result<()> {
         let body = match self
             .request(
                 "POST",
@@ -122,22 +128,26 @@ impl SunsynkClient {
             return Err(anyhow!(RefreshTokenRejected));
         }
         let data = body.get("data").cloned().unwrap_or(Value::Null);
-        self.access_token = data
+        let access_token = data
             .get("access_token")
             .and_then(Value::as_str)
             .map(str::to_owned);
-        self.access_expires_at = data
+        let access_expires_at = data
             .get("expires_in")
             .and_then(unsigned)
             .map(|seconds| Instant::now() + Duration::from_secs(seconds));
-        self.refresh_token = data
+        let refresh_token = data
             .get("refresh_token")
             .and_then(Value::as_str)
             .map(str::to_owned)
             .or_else(|| Some(token.to_owned()));
-        if self.access_token.is_none() {
+        if access_token.is_none() {
             return Err(anyhow!(RefreshTokenRejected));
         }
+        let mut auth = self.auth.lock().unwrap_or_else(|error| error.into_inner());
+        auth.access_token = access_token;
+        auth.access_expires_at = access_expires_at;
+        auth.refresh_token = refresh_token;
         Ok(())
     }
 }

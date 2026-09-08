@@ -4,7 +4,7 @@ use crate::{
     ui::format::{format_power, history_colors, history_label, history_value, series_color_index},
 };
 use gpui_component_macros::IntoPlot;
-use gpui_kit::component::plot::scale::{Scale, ScaleLinear, ScalePoint};
+use gpui_kit::component::plot::scale::{Scale, ScaleLinear};
 use gpui_kit::component::plot::shape::Line;
 use gpui_kit::component::plot::{AxisText, Grid, Plot, PlotAxis, StrokeStyle};
 use gpui_kit::component::{ActiveTheme, StyledExt, Theme};
@@ -22,6 +22,7 @@ pub(crate) struct HistoryPlot {
     pub(crate) power_indices: Vec<usize>,
     pub(crate) soc_indices: Vec<usize>,
     pub(crate) times: Arc<Vec<String>>,
+    pub(crate) time_indices: Arc<std::collections::HashMap<String, usize>>,
     pub(crate) chart_bounds: Arc<Mutex<Option<Bounds<Pixels>>>>,
     pub(crate) power_bounds: (f64, f64),
 }
@@ -43,10 +44,7 @@ impl Plot for HistoryPlot {
         if let Ok(mut chart_bounds) = self.chart_bounds.lock() {
             *chart_bounds = Some(plot_bounds);
         }
-        let x = ScalePoint::new(
-            self.times.as_ref().clone(),
-            vec![0., plot_bounds.size.width.as_f32()],
-        );
+        let plot_width = plot_bounds.size.width.as_f32();
         let (min_value, max_value) = self.power_bounds;
         let y = ScaleLinear::new(vec![min_value, max_value], vec![height, PLOT_TOP]);
         let y_ticks = [min_value, (min_value + max_value) / 2., max_value];
@@ -54,7 +52,7 @@ impl Plot for HistoryPlot {
         let x_labels = self.times.iter().enumerate().filter_map(|(index, label)| {
             (index % tick_margin == 0)
                 .then(|| {
-                    x.tick(label).map(|position| {
+                    Some(x_position(index, self.times.len(), plot_width)).map(|position| {
                         let align = if index == 0 {
                             TextAlign::Left
                         } else if index == self.times.len() - 1 {
@@ -102,11 +100,16 @@ impl Plot for HistoryPlot {
         let colors = history_colors();
         for &index in &self.power_indices {
             let series = &self.history[index];
-            let x_scale = x.clone();
+            let time_indices = self.time_indices.clone();
+            let times_len = self.times.len();
             let y_scale = y.clone();
             Line::new()
                 .data(series.points.iter())
-                .x(move |point| x_scale.tick(&point.time))
+                .x(move |point| {
+                    time_indices
+                        .get(&point.time)
+                        .map(|&index| x_position(index, times_len, plot_width))
+                })
                 .y(move |point| y_scale.tick(&point.watts))
                 .stroke(colors[series_color_index(&series.label) % colors.len()])
                 .stroke_style(StrokeStyle::Natural)
@@ -116,17 +119,30 @@ impl Plot for HistoryPlot {
         let soc_y = ScaleLinear::new(vec![0., 100.], vec![height, PLOT_TOP]);
         for &index in &self.soc_indices {
             let series = &self.history[index];
-            let x_scale = x.clone();
+            let time_indices = self.time_indices.clone();
+            let times_len = self.times.len();
             let y_scale = soc_y.clone();
             Line::new()
                 .data(series.points.iter())
-                .x(move |point| x_scale.tick(&point.time))
+                .x(move |point| {
+                    time_indices
+                        .get(&point.time)
+                        .map(|&index| x_position(index, times_len, plot_width))
+                })
                 .y(move |point| y_scale.tick(&point.watts))
                 .stroke(colors[series_color_index(&series.label) % colors.len()])
                 .stroke_style(StrokeStyle::Natural)
                 .stroke_width(px(1.5))
                 .paint(&plot_bounds, window);
         }
+    }
+}
+
+fn x_position(index: usize, count: usize, width: f32) -> f32 {
+    if count <= 1 {
+        0.
+    } else {
+        index as f32 / (count - 1) as f32 * width
     }
 }
 

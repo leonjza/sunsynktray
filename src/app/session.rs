@@ -19,9 +19,7 @@ impl MonitorController {
         if self.polling {
             self.stop_polling();
         }
-        if !self.has_cached_data {
-            self.connection = ConnectionState::Connecting;
-        }
+        self.connection = ConnectionState::Connecting;
         self.connect_generation = self.connect_generation.wrapping_add(1);
         let generation = self.connect_generation;
         if let Some(cancel) = self.connect_cancel.take() {
@@ -64,6 +62,9 @@ impl MonitorController {
         let settings = self.state.settings.clone();
         let connect_epoch = self.connect_epoch.clone();
         let progress_sender = sender.clone();
+        let connection_log = self.connection_log.clone();
+        let connection_log_revision = self.connection_log_revision.clone();
+        let connection_log_signal = self.connection_log_signal.clone();
         let (cancel_sender, cancel_receiver) = tokio::sync::oneshot::channel();
         self.connect_cancel = Some(cancel_sender);
         let operation = async move {
@@ -75,6 +76,14 @@ impl MonitorController {
                             generation,
                             message: message.to_owned(),
                         });
+                    })
+                    .with_request_log(move |message| {
+                        MonitorController::record_connection_event_to(
+                            &connection_log,
+                            &connection_log_revision,
+                            &connection_log_signal,
+                            message,
+                        );
                     });
             let inverters = client.list_inverters().await?;
             let selected = saved_selection
@@ -98,7 +107,7 @@ impl MonitorController {
             });
             let plant_data = match (selected.as_deref(), selected_plant_id) {
                 (Some(serial), Some(plant_id)) => {
-                    Some(client.refresh_plant(plant_id, serial).await?)
+                    Some(client.refresh_plant(plant_id, serial, true).await?)
                 }
                 _ => None,
             };
@@ -112,7 +121,8 @@ impl MonitorController {
                 inverters,
                 snapshot,
                 selected,
-                client.refresh_token().map(str::to_owned),
+                client.refresh_token(),
+                client.auth_state(),
                 history,
             ))
         };
@@ -125,13 +135,14 @@ impl MonitorController {
             };
             let _ = task_sender
                 .send(match result {
-                    Ok((inverters, snapshot, selected, refresh_token, history)) => {
+                    Ok((inverters, snapshot, selected, refresh_token, auth, history)) => {
                         ConnectResult::Connected {
                             generation,
                             inverters,
                             snapshot,
                             selected_serial: selected,
                             refresh_token,
+                            auth,
                             history,
                         }
                     }
@@ -163,6 +174,7 @@ impl MonitorController {
                             snapshot,
                             selected_serial: selected,
                             refresh_token,
+                            auth,
                             history,
                         } => {
                             if generation != dashboard.connect_generation {
@@ -174,6 +186,7 @@ impl MonitorController {
                             dashboard.selected_serial = selected.clone();
                             dashboard.inverters = inverters;
                             dashboard.refresh_token = refresh_token.clone();
+                            dashboard.auth_state = Some(auth);
                             if let Some((email, password)) = dashboard.credentials.clone() {
                                 credentials::save_async(
                                     email,
@@ -181,6 +194,7 @@ impl MonitorController {
                                     dashboard.refresh_token.clone(),
                                     selected.clone(),
                                     refresh_seconds,
+                                    dashboard.history_days,
                                     dashboard
                                         .tray_metric
                                         .map(TrayMetric::saved_name)
@@ -226,8 +240,8 @@ impl MonitorController {
                             }
                             dashboard.activity = message;
                         }
-                        ConnectResult::History(history) => {
-                            dashboard.apply_history(history);
+                        ConnectResult::History { history, source } => {
+                            dashboard.apply_history(history, source);
                         }
                         ConnectResult::Snapshot {
                             snapshot,
@@ -256,6 +270,7 @@ impl MonitorController {
                             dashboard.connect_cancel = None;
                             dashboard.connect_task = None;
                             let failure_activity = format!("Login failed: {error}");
+                            dashboard.record_connection_event(failure_activity.clone());
                             dashboard.connection = if dashboard.has_cached_data {
                                 ConnectionState::Stale
                             } else {
@@ -268,6 +283,7 @@ impl MonitorController {
                         ConnectResult::Stopped { error } => {
                             dashboard.apply_stopped(error, cx);
                         }
+                        ConnectResult::BackfillProgress { .. } => {}
                     }
                     cx.notify();
                 });
@@ -282,11 +298,15 @@ impl MonitorController {
         email: String,
         password: String,
         refresh_seconds: u64,
+        history_days: u64,
         cx: &mut Context<Self>,
     ) {
         let refresh_seconds = refresh_seconds.clamp(1, 3600);
+        let history_days = history_days.clamp(1, 3650);
         let interval_changed = self.refresh_seconds != refresh_seconds;
+        let history_days_changed = self.history_days != history_days;
         self.refresh_seconds = refresh_seconds;
+        self.history_days = history_days;
         let credentials_changed =
             self.credentials
                 .as_ref()
@@ -294,12 +314,22 @@ impl MonitorController {
                     current_email != &email || current_password != &password
                 });
         if self.polling && !credentials_changed {
-            if interval_changed {
+            if interval_changed || history_days_changed {
                 self.stop_polling();
                 self.start_polling(cx);
                 if self.send_poll_command(PollCommand::Refresh, cx) {
-                    if let Some((email, _)) = self.credentials.clone() {
-                        credentials::save_refresh_seconds_async(email, refresh_seconds);
+                    if let Some((email, password)) = self.credentials.clone() {
+                        credentials::save_async(
+                            email,
+                            password,
+                            self.refresh_token.clone(),
+                            self.selected_serial.clone(),
+                            refresh_seconds,
+                            self.history_days,
+                            self.tray_metric
+                                .map(TrayMetric::saved_name)
+                                .map(str::to_owned),
+                        );
                     }
                 }
             } else {

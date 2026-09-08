@@ -3,4 +3,4 @@ mod client;
 mod endpoints;
 mod error;
 mod parsing;
-pub(crate) use client::SunsynkClient;
+pub(crate) use client::{AuthState, SunsynkClient};

@@ -61,9 +61,10 @@ impl SunsynkClient {
     }
 
     pub(crate) async fn refresh_plant(
-        &mut self,
+        &self,
         plant_id: i64,
         serial: &str,
+        include_today_history: bool,
     ) -> Result<(EnergySnapshot, Option<Vec<HistorySeries>>)> {
         let today = chrono::Local::now().date_naive().to_string();
         // Authenticate once, then fetch the three independent readings in
@@ -71,54 +72,49 @@ impl SunsynkClient {
         // the client's mutable token state isolated from the other requests.
         self.ensure_authenticated().await?;
         let realtime_path = format!("/api/v1/plant/{plant_id}/realtime");
-        let day_path = format!("/api/v1/plant/energy/{plant_id}/day");
         let flow_path = format!("/api/v1/plant/energy/{plant_id}/flow");
-        let day_date = today.clone();
+        let day_path = format!("/api/v1/plant/energy/{plant_id}/day");
         let mut responses = self
             .parallel_readings(
                 &realtime_path,
-                &day_path,
                 &flow_path,
+                &day_path,
                 plant_id,
-                &day_date,
                 &today,
+                include_today_history,
             )
             .await?;
         if responses
             .iter()
             .any(|response| response.as_ref().err().is_some_and(is_auth_expired))
         {
-            self.access_token = None;
+            self.auth
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .access_token = None;
             self.ensure_authenticated().await?;
             responses = self
                 .parallel_readings(
                     &realtime_path,
-                    &day_path,
                     &flow_path,
+                    &day_path,
                     plant_id,
-                    &day_date,
                     &today,
+                    include_today_history,
                 )
                 .await?;
         }
-        let [realtime, day, flow] = responses;
+        let [realtime, flow, day] = responses;
         // Flow is the authoritative live-state response. Keep the live
         // dashboard usable if an auxiliary energy endpoint is unavailable.
-        let (realtime, day) = match (realtime, day) {
-            (Ok(realtime), Ok(day)) => (Some(realtime), Some(day)),
-            (realtime, day) => {
-                if let Err(ref error) = realtime {
-                    tracing::warn!(%error, "SunSynk realtime data unavailable; using flow data");
-                }
-                if let Err(ref error) = day {
-                    tracing::warn!(%error, "SunSynk daily energy data unavailable; using flow data");
-                }
-                (realtime.ok(), day.ok())
+        let realtime = match realtime {
+            Ok(realtime) => Some(realtime),
+            Err(error) => {
+                tracing::warn!(%error, "SunSynk realtime data unavailable; using flow data");
+                None
             }
         };
-        // The flow endpoint is both the live power-flow source and, for the
-        // current day, the chart source. Never use a historical chart date for
-        // live dashboard values.
+        // The flow endpoint is the authoritative live power-flow source.
         let flow = flow?;
         let live = flow_object(&flow)
             .ok_or_else(|| anyhow!("SunSynk plant flow response contained no live readings"))?;
@@ -133,64 +129,61 @@ impl SunsynkClient {
             .and_then(|value| data(value).ok())
             .and_then(|summary| first_string(summary, &["updateAt", "updatedAt", "updateTime"]))
             .or(snapshot.updated_at);
-        let history = {
-            let history = history_series(&flow);
-            if history.is_empty() {
-                day.as_ref().map(history_series).unwrap_or_default()
-            } else {
-                history
+        let history = match day {
+            Ok(day) => history_series(&day),
+            Err(error) => {
+                tracing::warn!(%error, "SunSynk day history unavailable");
+                Vec::new()
             }
         };
-        if snapshot.solar_yield_kwh.is_none() {
-            let day_history = day.as_ref().map(history_series).unwrap_or_default();
-            snapshot.solar_yield_kwh = snapshot
-                .solar_yield_kwh
-                .or_else(|| daily_solar_yield_from_history(&day_history));
-        }
         Ok((snapshot, (!history.is_empty()).then_some(history)))
     }
 
     async fn parallel_readings(
         &self,
         realtime_path: &str,
-        day_path: &str,
         flow_path: &str,
+        day_path: &str,
         plant_id: i64,
-        day_date: &str,
         today: &str,
+        include_today_history: bool,
     ) -> Result<[Result<Value>; 3]> {
         let realtime_client = self.clone();
-        let day_client = self.clone();
         let flow_client = self.clone();
+        let day_client = self.clone();
         let realtime_path = realtime_path.to_owned();
-        let day_path = day_path.to_owned();
         let flow_path = flow_path.to_owned();
-        let day_date = day_date.to_owned();
+        let day_path = day_path.to_owned();
         let today = today.to_owned();
         let realtime = async move {
             realtime_client
                 .get_authenticated(&realtime_path, Some(&[("id", plant_id.to_string())]))
                 .await
         };
-        let day = async move {
-            day_client
-                .get_authenticated(
-                    &day_path,
-                    Some(&[
-                        ("lan", "en".to_owned()),
-                        ("date", day_date),
-                        ("id", plant_id.to_string()),
-                    ]),
-                )
-                .await
-        };
+        let day_today = today.clone();
         let flow = async move {
             flow_client
                 .get_authenticated(&flow_path, Some(&[("date", today)]))
                 .await
         };
-        let (realtime, day, flow) = join3(realtime, day, flow).await;
-        Ok([realtime, day, flow])
+        let day = async move {
+            if include_today_history {
+                day_client
+                    .get_authenticated(
+                        &day_path,
+                        Some(&[
+                            ("lan", "en".into()),
+                            ("date", day_today),
+                            ("id", plant_id.to_string()),
+                        ]),
+                    )
+                    .await
+            } else {
+                Ok(Value::Null)
+            }
+        };
+        let (realtime, flow, day) = join3(realtime, flow, day).await;
+        Ok([realtime, flow, day])
     }
 
     pub async fn inspect_endpoint(
@@ -201,72 +194,16 @@ impl SunsynkClient {
         self.get(path, params).await
     }
 
-    pub async fn history(&mut self, plant_id: i64, date: &str) -> Result<Vec<HistorySeries>> {
-        // Use the common authenticated GET path so history gets the same
-        // expiry retry and refresh-token fallback as live readings.
-        self.ensure_authenticated().await?;
+    pub async fn history(&self, plant_id: i64, date: &str) -> Result<Vec<HistorySeries>> {
         let day_path = format!("/api/v1/plant/energy/{plant_id}/day");
-        let flow_path = format!("/api/v1/plant/energy/{plant_id}/flow");
-        let mut responses = self
-            .parallel_history(&day_path, &flow_path, plant_id, date)
-            .await?;
-        if responses
-            .iter()
-            .any(|response| response.as_ref().err().is_some_and(is_auth_expired))
-        {
-            self.access_token = None;
-            self.ensure_authenticated().await?;
-            responses = self
-                .parallel_history(&day_path, &flow_path, plant_id, date)
-                .await?;
-        }
-        let [day, flow] = responses;
-        let from_flow = flow.as_ref().map(history_series).unwrap_or_default();
-        if !from_flow.is_empty() {
-            return Ok(from_flow);
-        }
-        let from_day = day.as_ref().map(history_series).unwrap_or_default();
-        if !from_day.is_empty() {
-            return Ok(from_day);
-        }
-        match (flow, day) {
-            (Err(flow_error), Err(day_error)) => {
-                Err(day_error.context(format!("historical flow request also failed: {flow_error}")))
-            }
-            (Err(error), _) | (_, Err(error)) => Err(error),
-            (Ok(_), Ok(_)) => Ok(Vec::new()),
-        }
-    }
-
-    async fn parallel_history(
-        &self,
-        day_path: &str,
-        flow_path: &str,
-        plant_id: i64,
-        date: &str,
-    ) -> Result<[Result<Value>; 2]> {
-        let day_client = self.clone();
-        let flow_client = self.clone();
-        let day_path = day_path.to_owned();
-        let flow_path = flow_path.to_owned();
-        let day_params = [
-            ("lan", "en".to_owned()),
+        let params = [
+            ("lan", "en".into()),
             ("date", date.to_owned()),
             ("id", plant_id.to_string()),
         ];
-        let flow_params = [("date", date.to_owned())];
-        let day = async move {
-            day_client
-                .get_authenticated(&day_path, Some(&day_params))
-                .await
-        };
-        let flow = async move {
-            flow_client
-                .get_authenticated(&flow_path, Some(&flow_params))
-                .await
-        };
-        let (day, flow) = futures_util::future::join(day, flow).await;
-        Ok([day, flow])
+        // Route history through the same authenticated GET factory as every
+        // other non-parallel request, including its expiry retry.
+        Ok(history_series(&self.get(&day_path, Some(&params)).await?))
     }
 }
 

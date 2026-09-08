@@ -28,6 +28,12 @@ impl Render for Dashboard {
                         input.set_value(refresh_seconds.to_string(), window, cx)
                     });
                 }
+                let history_days = self.controller.read(cx).history_days;
+                if self.history_days.read(cx).value().as_ref() == "365" {
+                    self.history_days.update(cx, |input, cx| {
+                        input.set_value(history_days.to_string(), window, cx)
+                    });
+                }
             }
             self.credentials_synced = true;
         }
@@ -84,7 +90,8 @@ impl Render for Dashboard {
                     &self.state,
                     &controller.connection,
                     status_fetching,
-                    controller.history_date,
+                    self.history_date_picker.clone(),
+                    controller.history_source,
                     self.hovered_history,
                     self.chart_bounds.clone(),
                     controller.inverters.iter().find(|inverter| {
@@ -97,15 +104,20 @@ impl Render for Dashboard {
                     email: &self.email,
                     password: &self.password,
                     refresh_interval: &self.refresh_interval,
+                    history_days: &self.history_days,
                     connection: &controller.connection,
                     inverters: &controller.inverters,
                     selected: &controller.selected_serial,
                     tray_metric: controller.tray_metric,
-                    fetching: status_fetching,
                     startup_enabled: self.startup_enabled,
                     startup_pending: self.startup_pending,
                     startup_error: self.startup_error.clone(),
                     refresh_interval_error: self.refresh_interval_error.clone(),
+                    backfill_completed: controller.backfill_completed,
+                    backfill_total: controller.backfill_total,
+                    backfill_running: controller.backfill_running,
+                    backfill_detail: controller.backfill_detail.clone(),
+                    next_request_in: controller.backfill_next_request_in,
                     entity,
                 }),
             })

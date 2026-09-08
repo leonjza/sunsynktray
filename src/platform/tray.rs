@@ -176,10 +176,21 @@ fn quit(_: &Quit, cx: &mut App) {
     {
         controller.update(cx, |controller, _| controller.stop_polling());
     }
+    let database = cx
+        .try_global::<crate::app::MonitorStateGlobal>()
+        .map(|state| state.0.database.clone());
     cx.spawn(async move |cx| {
         cx.background_executor()
             .spawn(async { crate::storage::credentials::flush() })
             .await;
+        if let Some(database) = database {
+            cx.background_executor()
+                .spawn(async move {
+                    database.flush();
+                    database.shutdown();
+                })
+                .await;
+        }
         crate::app::shutdown_runtime();
         cx.update(|app| app.quit());
     })
@@ -253,7 +264,7 @@ fn fallback_icon() -> Icon {
 
 #[cfg(not(target_os = "windows"))]
 fn metric_color(value: Option<&str>, symbol: &str) -> &'static str {
-    if symbol == "battery.100" {
+    if symbol.starts_with("battery") {
         if let Some(soc) =
             value.and_then(|value| value.trim().trim_end_matches('%').parse::<f64>().ok())
         {
