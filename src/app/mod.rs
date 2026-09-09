@@ -81,7 +81,6 @@ impl Dashboard {
         let history_days_observed = history_days.clone();
         let history_days_generation = Arc::new(AtomicU64::new(0));
         let status_bar = cx.new(|_| StatusBar::new(controller.clone()));
-        let status_entity = status_bar.downgrade();
         let mut dashboard = Self {
             state,
             controller: controller.clone(),
@@ -115,23 +114,14 @@ impl Dashboard {
         let dashboard_timer = cx.entity().downgrade();
         cx.spawn(async move |_, cx| loop {
             cx.background_executor().timer(Duration::from_secs(1)).await;
-            let Ok((settings, controller)) = dashboard_timer.update(cx, |dashboard, _| {
-                (
-                    dashboard.screen == Screen::Settings,
-                    dashboard.controller.clone(),
-                )
-            }) else {
+            let Ok(controller) = dashboard_timer
+                .update(cx, |dashboard, _| dashboard.controller.clone())
+            else {
                 break;
             };
             let changed =
                 controller.update(cx, |controller, _| controller.tick_refresh_countdown());
-            if settings && changed && dashboard_timer.update(cx, |_, cx| cx.notify()).is_err() {
-                break;
-            }
-            if status_entity
-                .update(cx, |status, cx| status.tick_countdown(cx))
-                .is_err()
-            {
+            if changed && dashboard_timer.update(cx, |_, cx| cx.notify()).is_err() {
                 break;
             }
         })

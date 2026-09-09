@@ -1,7 +1,9 @@
 use crate::app::{Dashboard, MonitorController, Screen};
 use gpui_kit::component::{
     button::{Button, ButtonVariants},
-    ActiveTheme, Icon, IconName, Sizable, StyledExt, Theme,
+    spinner::Spinner,
+    status_bar::StatusBar as KitStatusBar,
+    Icon, IconName, Sizable, StyledExt, Theme,
 };
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
@@ -21,12 +23,12 @@ pub(crate) struct StatusBar {
 }
 
 impl Render for StatusBar {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         render_status_bar(
-            cx.theme(),
             self.screen,
             &self.activity,
             self.fetching,
+            self.next_refresh_in,
             self.controller.clone(),
             self.connection_log_window.clone(),
         )
@@ -78,21 +80,6 @@ impl StatusBar {
         cx.notify();
     }
 
-    pub(crate) fn tick_countdown(&mut self, cx: &mut Context<Self>) {
-        let Some(seconds) = self.next_refresh_in.as_mut() else {
-            return;
-        };
-        if *seconds == 0 {
-            return;
-        }
-        *seconds = seconds.saturating_sub(1);
-        self.activity = if self.activity.starts_with("Refresh failed") {
-            format!("Refresh failed · retry in {}s", *seconds)
-        } else {
-            format!("Waiting for next refresh · next refresh in {}s", *seconds)
-        };
-        cx.notify();
-    }
 }
 
 pub(crate) fn toolbar(
@@ -138,10 +125,10 @@ pub(crate) fn toolbar(
 }
 
 fn render_status_bar(
-    theme: &Theme,
     screen: Screen,
     activity: &str,
     fetching: bool,
+    next_refresh_in: Option<u64>,
     controller: Entity<MonitorController>,
     connection_log_window: Arc<Mutex<Option<AnyWindowHandle>>>,
 ) -> impl IntoElement {
@@ -151,35 +138,62 @@ fn render_status_bar(
         || activity.starts_with("Refresh failed")
         || activity.starts_with("History unavailable")
         || activity.starts_with("Polling stopped");
-    div()
+    let activity = if show_activity {
+        refresh_activity(activity, next_refresh_in)
+    } else {
+        "Settings".to_owned()
+    };
+    let activity_content = div()
         .h_flex()
-        .h(px(36.))
-        .px_4()
         .items_center()
-        .border_t_1()
-        .border_color(theme.border)
-        .text_xs()
-        .text_color(theme.muted_foreground)
-        .child(if show_activity {
-            activity.to_owned()
+        .gap_2()
+        .child(if fetching {
+            div()
+                .h_flex()
+                .items_center()
+                .justify_center()
+                .size_4()
+                .child(
+                    Spinner::new()
+                        .small()
+                        .color(rgb(0x34c759).into()),
+                )
+                .into_any_element()
         } else {
-            "Settings".to_owned()
+            Icon::new(IconName::Globe)
+                .size_4()
+                .into_any_element()
         })
-        .child(div().flex_1())
-        .child(
-            Button::new("connection-log")
-                .icon(IconName::FileText)
-                .accessibility_label("Open connection log")
-                .tooltip("Connection log")
-                .ghost()
-                .xsmall()
-                .on_click(move |_, _, cx| {
-                    crate::app::open_connection_log_window(
-                        cx,
-                        controller.clone(),
-                        connection_log_window.clone(),
-                    );
-                }),
-        )
-        .child(format!("v{}", env!("CARGO_PKG_VERSION")))
+        .child(activity)
+        .into_any_element();
+    let connection_log = Button::new("connection-log")
+        .icon(IconName::FileText)
+        .accessibility_label("Open connection log")
+        .tooltip("Connection log")
+        .ghost()
+        .xsmall()
+        .on_click(move |_, _, cx| {
+            crate::app::open_connection_log_window(
+                cx,
+                controller.clone(),
+                connection_log_window.clone(),
+            );
+        });
+    KitStatusBar::new()
+        .left(activity_content)
+        .right(connection_log)
+        .right(format!("v{}", env!("CARGO_PKG_VERSION")))
+        .into_any_element()
+}
+
+fn refresh_activity(activity: &str, next_refresh_in: Option<u64>) -> String {
+    match next_refresh_in {
+        Some(seconds) if activity.starts_with("Refresh failed") => {
+            format!("Refresh failed · retry in {seconds}s")
+        }
+        Some(seconds) if activity.starts_with("Waiting for next refresh") => {
+            format!("Waiting for next refresh · next refresh in {seconds}s")
+        }
+        _ => activity.to_owned(),
+    }
 }
