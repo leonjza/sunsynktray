@@ -3,7 +3,10 @@ use crate::{
     app::{ConnectionState, Dashboard, HistorySource},
     domain::InverterSummary,
     ui::format::format_energy,
-    ui::{history_chart as history_chart_module, power_flow as power_flow_view},
+    ui::{
+        history_chart as history_chart_module, power_flow as power_flow_view,
+        power_state as power_state_view,
+    },
 };
 use gpui_kit::component::{
     button::{Button, ButtonVariants},
@@ -60,21 +63,17 @@ pub(crate) fn render(
                 .h_flex()
                 .items_center()
                 .gap_2()
-                .p_3()
-                .bg(theme.muted)
-                .rounded(theme.radius)
-                .child(div().size_2().rounded_full().bg(if live {
-                    rgb(0x34c759).into()
-                } else {
-                    theme.muted_foreground
-                }))
+                .px_1()
+                .pb_3()
+                .border_b_1()
+                .border_color(theme.border)
                 .child(
                     div()
                         .h_flex()
                         .items_center()
                         .gap_1()
                         .child(
-                            div().text_sm().child(
+                            div().text_sm().font_weight(FontWeight::MEDIUM).child(
                                 identity
                                     .as_ref()
                                     .map(|(name, _)| name.clone())
@@ -116,8 +115,9 @@ pub(crate) fn render(
                 )
                 .child(
                     Button::new("refresh")
-                        .label("Refresh")
                         .icon(IconName::Redo2)
+                        .accessibility_label("Refresh dashboard")
+                        .tooltip("Refresh dashboard")
                         .loading(fetching)
                         .loading_icon(IconName::Redo2)
                         .ghost()
@@ -145,6 +145,7 @@ pub(crate) fn render(
                     entity.clone(),
                 )),
         )
+        .child(power_state_view::render(theme, snapshot, live))
         .child(history_chart(
             theme,
             data.history,

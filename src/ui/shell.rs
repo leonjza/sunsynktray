@@ -79,7 +79,6 @@ impl StatusBar {
         self.source_refresh_generation = refresh_generation;
         cx.notify();
     }
-
 }
 
 pub(crate) fn toolbar(
@@ -89,13 +88,14 @@ pub(crate) fn toolbar(
 ) -> impl IntoElement {
     div()
         .h_flex()
-        .h(px(48.))
+        .h(px(50.))
         .flex_shrink_0()
         .px_4()
         .items_center()
         .gap_2()
         .border_b_1()
         .border_color(theme.border)
+        .bg(theme.muted)
         .child(Icon::new(IconName::Sun).size_4())
         .child(div().font_weight(FontWeight::SEMIBOLD).child("SunTray"))
         .child(div().flex_1())
@@ -153,16 +153,10 @@ fn render_status_bar(
                 .items_center()
                 .justify_center()
                 .size_4()
-                .child(
-                    Spinner::new()
-                        .small()
-                        .color(rgb(0x34c759).into()),
-                )
+                .child(Spinner::new().small().color(rgb(0x34c759).into()))
                 .into_any_element()
         } else {
-            Icon::new(IconName::Globe)
-                .size_4()
-                .into_any_element()
+            Icon::new(IconName::Globe).size_4().into_any_element()
         })
         .child(activity)
         .into_any_element();

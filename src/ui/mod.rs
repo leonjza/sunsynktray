@@ -9,5 +9,6 @@ pub(crate) mod dashboard;
 pub(crate) mod format;
 pub(crate) mod history_chart;
 pub(crate) mod power_flow;
+pub(crate) mod power_state;
 pub(crate) mod settings;
 pub(crate) mod shell;

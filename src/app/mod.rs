@@ -114,8 +114,8 @@ impl Dashboard {
         let dashboard_timer = cx.entity().downgrade();
         cx.spawn(async move |_, cx| loop {
             cx.background_executor().timer(Duration::from_secs(1)).await;
-            let Ok(controller) = dashboard_timer
-                .update(cx, |dashboard, _| dashboard.controller.clone())
+            let Ok(controller) =
+                dashboard_timer.update(cx, |dashboard, _| dashboard.controller.clone())
             else {
                 break;
             };

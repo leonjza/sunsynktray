@@ -8,7 +8,7 @@ pub(crate) fn open_main_window(
     controller: Entity<MonitorController>,
     show: bool,
 ) {
-    let bounds = Bounds::centered(None, size(px(620.), px(820.)), cx);
+    let bounds = Bounds::centered(None, size(px(620.), px(840.)), cx);
     if let Err(error) = cx.open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -16,7 +16,7 @@ pub(crate) fn open_main_window(
             is_resizable: true,
             focus: show,
             show,
-            window_min_size: Some(size(px(560.), px(760.))),
+            window_min_size: Some(size(px(560.), px(800.))),
             ..Default::default()
         },
         |window, cx| {
