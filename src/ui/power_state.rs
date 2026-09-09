@@ -72,7 +72,7 @@ pub(crate) fn classify(snapshot: &EnergySnapshot, live: bool) -> PowerState {
         return PowerState::new(
             PowerStateKind::Exporting,
             "Sending surplus to grid",
-            "Solar is producing more than the home needs",
+            "Solar is producing more than the load needs",
             PowerStateTone::Green,
         );
     }
@@ -80,7 +80,7 @@ pub(crate) fn classify(snapshot: &EnergySnapshot, live: bool) -> PowerState {
         return PowerState::new(
             PowerStateKind::SolarCharging,
             "Charging from solar",
-            "Solar is supplying the home and battery",
+            "Solar is supplying the load and battery",
             PowerStateTone::Green,
         );
     }
@@ -88,7 +88,7 @@ pub(crate) fn classify(snapshot: &EnergySnapshot, live: bool) -> PowerState {
         return PowerState::new(
             PowerStateKind::SolarBattery,
             "Solar + battery support",
-            "Solar and battery are supplying the home",
+            "Solar and battery are supplying the load",
             PowerStateTone::Green,
         );
     }
@@ -96,7 +96,7 @@ pub(crate) fn classify(snapshot: &EnergySnapshot, live: bool) -> PowerState {
         return PowerState::new(
             PowerStateKind::Solar,
             "Running on solar",
-            "Solar is supplying the home",
+            "Solar is supplying the load",
             PowerStateTone::Green,
         );
     }
@@ -104,7 +104,7 @@ pub(crate) fn classify(snapshot: &EnergySnapshot, live: bool) -> PowerState {
         return PowerState::new(
             PowerStateKind::Battery,
             "Running on battery",
-            "Battery is supplying the home",
+            "Battery is supplying the load",
             PowerStateTone::Yellow,
         );
     }
@@ -112,7 +112,7 @@ pub(crate) fn classify(snapshot: &EnergySnapshot, live: bool) -> PowerState {
         return PowerState::new(
             PowerStateKind::GridCharging,
             "Charging from the grid",
-            "The grid is supplying the home and battery",
+            "The grid is supplying the load and battery",
             PowerStateTone::Yellow,
         );
     }
@@ -120,7 +120,7 @@ pub(crate) fn classify(snapshot: &EnergySnapshot, live: bool) -> PowerState {
         return PowerState::new(
             PowerStateKind::Grid,
             "Using grid power",
-            "The grid is supplying the home",
+            "The grid is supplying the load",
             PowerStateTone::Yellow,
         );
     }
@@ -191,6 +191,7 @@ fn battery_to_inverter(snapshot: &EnergySnapshot) -> bool {
 fn inverter_to_grid(snapshot: &EnergySnapshot) -> bool {
     snapshot
         .grid_to
+        .map(|grid_to_inverter| !grid_to_inverter)
         .or(snapshot.to_grid)
         .unwrap_or(snapshot.grid_watts < -FLOW_TOLERANCE_WATTS)
 }
@@ -238,6 +239,15 @@ mod tests {
             classify(&snapshot(1000., 0., -500., 500.), true).kind,
             PowerStateKind::Exporting
         );
+    }
+
+    #[test]
+    fn grid_to_inverter_is_classified_as_importing() {
+        let mut reading = snapshot(1000., 0., 50., 950.);
+        reading.to_grid = Some(false);
+        reading.grid_to = Some(true);
+
+        assert_eq!(classify(&reading, true).kind, PowerStateKind::Solar);
     }
 
     #[test]
