@@ -51,6 +51,16 @@ encrypt_password() {
   fi
 }
 
+is_account_locked() {
+  jq -e '
+    ([.msg, .message, .error, .error_description, .data.msg, .data.message, .data.error]
+    | map(select(type == "string"))
+    | join(" ")
+    | test("too many login failures|verification code|(account|user|login).{0,40}(locked|lockout|disabled)|(locked|lockout).{0,40}(account|user|login)|账号|用户.*(锁定|冻结)"; "i"))
+    or .code == 114
+  ' <<< "$1" >/dev/null 2>&1
+}
+
 now_ms() {
   echo "$(( $(date +%s) * 1000 ))"
 }
@@ -105,7 +115,16 @@ login_response=$(curl -sS -X POST "${BASE_URL}/oauth/token/new" \
   -H "Content-Type: application/json;charset=UTF-8" \
   -d "$login_payload")
 
-access_token=$(echo "$login_response" | jq -er '.data.access_token')
+access_token=$(echo "$login_response" | jq -r '.data.access_token // empty')
+if [[ -z "$access_token" ]]; then
+  if is_account_locked "$login_response"; then
+    echo "[!] SunSynk login is temporarily blocked; treating API smoke test as skipped."
+    exit 0
+  fi
+
+  # Preserve jq's useful error output for all other unsuccessful logins.
+  echo "$login_response" | jq -er '.data.access_token'
+fi
 echo "[+] Login successful; token length: ${#access_token}"
 
 auth_header=("Authorization: Bearer ${access_token}")
