@@ -16,16 +16,6 @@ pub(crate) struct SavedCredentials {
     pub(crate) password: String,
     #[serde(default)]
     pub(crate) refresh_token: Option<String>,
-    #[serde(default)]
-    pub(crate) selected_serial: Option<String>,
-    #[serde(default)]
-    pub(crate) refresh_seconds: Option<u64>,
-    #[serde(default)]
-    pub(crate) history_days: Option<u64>,
-    #[serde(default)]
-    pub(crate) tray_metric: Option<String>,
-    #[serde(default)]
-    pub(crate) cached_snapshot: Option<crate::domain::EnergySnapshot>,
 }
 
 impl fmt::Debug for SavedCredentials {
@@ -38,9 +28,6 @@ impl fmt::Debug for SavedCredentials {
                 "refresh_token",
                 &self.refresh_token.as_ref().map(|_| "[REDACTED]"),
             )
-            .field("selected_serial", &self.selected_serial)
-            .field("refresh_seconds", &self.refresh_seconds)
-            .field("tray_metric", &self.tray_metric)
             .finish()
     }
 }
@@ -75,82 +62,14 @@ fn save_record_unlocked(record: &SavedCredentials) -> Result<()> {
     Ok(())
 }
 
-fn update_record(
-    email: Option<&str>,
-    update: impl FnOnce(&mut SavedCredentials) -> bool,
-) -> Result<()> {
+pub(crate) fn save(email: &str, password: &str, refresh_token: Option<&str>) -> Result<()> {
     let _guard = keychain_lock()
         .lock()
         .unwrap_or_else(|error| error.into_inner());
-    let mut record = load_unlocked()?.ok_or_else(|| anyhow::anyhow!("no saved credentials"))?;
-    if let Some(email) = email.filter(|email| record.email != *email) {
-        tracing::debug!(%email, "ignoring stale credential update for another account");
-        return Ok(());
-    }
-    if update(&mut record) {
-        save_record_unlocked(&record)
-    } else {
-        Ok(())
-    }
-}
-
-pub(crate) fn save(
-    email: &str,
-    password: &str,
-    refresh_token: Option<&str>,
-    selected_serial: Option<&str>,
-    refresh_seconds: u64,
-    history_days: u64,
-    tray_metric: Option<&str>,
-) -> Result<()> {
-    let _guard = keychain_lock()
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-    let existing = load_unlocked()?;
-    let selected_serial = selected_serial.map(str::to_owned).or_else(|| {
-        existing
-            .as_ref()
-            .and_then(|saved| (saved.email == email).then_some(saved.selected_serial.clone()))
-            .flatten()
-    });
     save_record_unlocked(&SavedCredentials {
         email: email.into(),
         password: password.into(),
         refresh_token: refresh_token.map(str::to_owned),
-        selected_serial,
-        refresh_seconds: Some(refresh_seconds),
-        history_days: Some(history_days),
-        tray_metric: tray_metric.map(str::to_owned).or_else(|| {
-            existing
-                .as_ref()
-                .and_then(|saved| saved.tray_metric.clone())
-        }),
-        cached_snapshot: existing
-            .as_ref()
-            .and_then(|saved| (saved.email == email).then(|| saved.cached_snapshot.clone()))
-            .flatten(),
-    })
-}
-
-pub(crate) fn save_selection(email: &str, serial: &str) -> Result<()> {
-    update_record(Some(email), |record| {
-        if record.selected_serial.as_deref() != Some(serial) {
-            record.selected_serial = Some(serial.to_owned());
-            true
-        } else {
-            false
-        }
-    })
-}
-
-pub(crate) fn save_tray_metric(email: &str, metric: Option<&str>) -> Result<()> {
-    update_record(Some(email), |record| {
-        if record.tray_metric.as_deref() == metric {
-            false
-        } else {
-            record.tray_metric = metric.map(str::to_owned);
-            true
-        }
     })
 }
 
@@ -178,29 +97,12 @@ pub(crate) fn save_refresh_token(
     save_record_unlocked(&record)
 }
 
-pub(crate) fn save_cached_data(
-    email: &str,
-    snapshot: &crate::domain::EnergySnapshot,
-) -> Result<()> {
-    update_record(Some(email), |record| {
-        let snapshot_changed = record.cached_snapshot.as_ref() != Some(snapshot);
-        if !snapshot_changed {
-            return false;
-        }
-        record.cached_snapshot = Some(snapshot.clone());
-        true
-    })
-}
-
 type PersistenceTaskFn = Box<dyn FnOnce() + Send + 'static>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PersistenceKey {
     Credentials,
-    Selection,
-    TrayMetric,
     RefreshToken,
-    CachedData,
     Flush,
 }
 
@@ -294,22 +196,6 @@ pub(crate) fn flush() {
     }
 }
 
-pub(crate) fn save_selection_async(email: String, serial: String) {
-    enqueue_persistence(PersistenceKey::Selection, move || {
-        if let Err(error) = save_selection(&email, &serial) {
-            tracing::warn!(%error, "could not save selected inverter");
-        }
-    });
-}
-
-pub(crate) fn save_tray_metric_async(email: String, metric: Option<String>) {
-    enqueue_persistence(PersistenceKey::TrayMetric, move || {
-        if let Err(error) = save_tray_metric(&email, metric.as_deref()) {
-            tracing::warn!(%error, "could not save tray metric");
-        }
-    });
-}
-
 pub(crate) fn save_refresh_token_async(
     email: String,
     expected_token: Option<String>,
@@ -322,33 +208,9 @@ pub(crate) fn save_refresh_token_async(
     });
 }
 
-pub(crate) fn save_cached_data_async(email: String, snapshot: crate::domain::EnergySnapshot) {
-    enqueue_persistence(PersistenceKey::CachedData, move || {
-        if let Err(error) = save_cached_data(&email, &snapshot) {
-            tracing::warn!(%error, "could not persist cached SunSynk data");
-        }
-    });
-}
-
-pub(crate) fn save_async(
-    email: String,
-    password: String,
-    refresh_token: Option<String>,
-    selected_serial: Option<String>,
-    refresh_seconds: u64,
-    history_days: u64,
-    tray_metric: Option<String>,
-) {
+pub(crate) fn save_async(email: String, password: String, refresh_token: Option<String>) {
     enqueue_persistence(PersistenceKey::Credentials, move || {
-        if let Err(error) = save(
-            &email,
-            &password,
-            refresh_token.as_deref(),
-            selected_serial.as_deref(),
-            refresh_seconds,
-            history_days,
-            tray_metric.as_deref(),
-        ) {
+        if let Err(error) = save(&email, &password, refresh_token.as_deref()) {
             tracing::warn!(%error, "could not save SunSynk credentials");
         }
     });
@@ -368,8 +230,8 @@ mod tests {
             pending: Mutex::new(VecDeque::new()),
             wake: Condvar::new(),
         };
-        queue.enqueue(PersistenceKey::Selection, Box::new(|| {}));
-        queue.enqueue(PersistenceKey::Selection, Box::new(|| {}));
+        queue.enqueue(PersistenceKey::Credentials, Box::new(|| {}));
+        queue.enqueue(PersistenceKey::Credentials, Box::new(|| {}));
         queue.enqueue(PersistenceKey::RefreshToken, Box::new(|| {}));
         queue.enqueue(PersistenceKey::RefreshToken, Box::new(|| {}));
         queue.enqueue(PersistenceKey::Flush, Box::new(|| {}));
@@ -377,7 +239,7 @@ mod tests {
 
         let pending = queue.pending.lock().unwrap();
         assert_eq!(pending.len(), 5);
-        assert_eq!(pending[0].key, PersistenceKey::Selection);
+        assert_eq!(pending[0].key, PersistenceKey::Credentials);
         assert_eq!(pending[1].key, PersistenceKey::RefreshToken);
         assert_eq!(pending[2].key, PersistenceKey::RefreshToken);
         assert_eq!(pending[3].key, PersistenceKey::Flush);

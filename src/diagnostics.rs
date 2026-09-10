@@ -5,7 +5,7 @@ use serde_json::{Map, Value};
 use std::{collections::BTreeMap, fs, path::PathBuf};
 
 use crate::{
-    storage::{config::Settings, credentials},
+    storage::{config::Settings, credentials, settings as preferences},
     sunsynk::SunsynkClient,
 };
 
@@ -21,6 +21,7 @@ struct ApiFixture {
 
 pub(crate) fn run(args: &[String], settings: Settings) -> Result<()> {
     let saved = credentials::load()?.context("no SunSynk credentials found in the keychain")?;
+    let preferences = preferences::load()?.unwrap_or_default();
     let serial_override = option(args, "--serial");
     let output = option(args, "--output")
         .map(PathBuf::from)
@@ -44,7 +45,7 @@ pub(crate) fn run(args: &[String], settings: Settings) -> Result<()> {
         }
         let selected = serial_override
             .as_deref()
-            .or(saved.selected_serial.as_deref())
+            .or(preferences.selected_serial.as_deref())
             .and_then(|serial| inverters.iter().find(|item| item.serial == serial))
             .or_else(|| inverters.first());
         let selected = selected.context("could not select an inverter")?;

@@ -35,6 +35,9 @@ pub(crate) struct Dashboard {
     state: Arc<MonitorState>,
     controller: Entity<MonitorController>,
     screen: Screen,
+    always_on_top: bool,
+    compact_view: bool,
+    normal_window_size: Size<Pixels>,
     email: Entity<InputState>,
     password: Entity<InputState>,
     refresh_interval: Entity<InputState>,
@@ -52,6 +55,8 @@ pub(crate) struct Dashboard {
     history_date_picker: Entity<DatePickerState>,
     _subscriptions: Vec<Subscription>,
 }
+
+pub(crate) const COMPACT_WINDOW_HEIGHT: f32 = 360.;
 impl Dashboard {
     pub(crate) fn new(
         state: Arc<MonitorState>,
@@ -81,10 +86,14 @@ impl Dashboard {
         let history_days_observed = history_days.clone();
         let history_days_generation = Arc::new(AtomicU64::new(0));
         let status_bar = cx.new(|_| StatusBar::new(controller.clone()));
+        let normal_window_size = window.bounds().size;
         let mut dashboard = Self {
             state,
             controller: controller.clone(),
             screen: Screen::Dashboard,
+            always_on_top: false,
+            compact_view: false,
+            normal_window_size,
             email,
             password,
             refresh_interval,
@@ -324,8 +333,50 @@ impl Dashboard {
         cx.notify();
     }
 
+    pub(crate) fn toggle_always_on_top(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let enabled = !self.always_on_top;
+        if crate::platform::set_window_always_on_top(window, enabled) {
+            self.always_on_top = enabled;
+            crate::storage::settings::save_always_on_top_async(enabled);
+            cx.notify();
+        }
+    }
+
     pub(crate) fn open_settings(&mut self, cx: &mut Context<Self>) {
         self.screen = Screen::Settings;
         cx.notify();
+    }
+
+    pub(crate) fn set_compact_view(
+        &mut self,
+        compact_view: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.compact_view == compact_view {
+            return;
+        }
+        if compact_view {
+            self.normal_window_size = window.bounds().size;
+            window.resize(size(
+                self.normal_window_size.width,
+                px(COMPACT_WINDOW_HEIGHT),
+            ));
+        } else {
+            window.resize(self.normal_window_size);
+        }
+        self.compact_view = compact_view;
+        crate::storage::settings::save_compact_view_async(compact_view);
+        cx.notify();
+    }
+
+    pub(crate) fn apply_compact_window_size(&mut self, window: &mut Window) {
+        if self.compact_view {
+            self.normal_window_size = window.bounds().size;
+            window.resize(size(
+                self.normal_window_size.width,
+                px(COMPACT_WINDOW_HEIGHT),
+            ));
+        }
     }
 }

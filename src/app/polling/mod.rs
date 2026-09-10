@@ -64,7 +64,6 @@ impl MonitorController {
             self.state
                 .database
                 .save_snapshot(email.clone(), self.state.snapshot());
-            credentials::save_cached_data_async(email.clone(), self.state.snapshot());
         }
         let previous_refresh_token = self.refresh_token.clone();
         let token_changed = refresh_token != self.refresh_token;
@@ -328,9 +327,7 @@ impl MonitorController {
             return;
         }
         self.selected_serial = Some(serial.clone());
-        if let Some((email, _)) = &self.credentials {
-            credentials::save_selection_async(email.clone(), serial);
-        }
+        crate::storage::settings::save_selected_serial_async(serial);
         if !self.polling {
             self.activity = "Inverter selected".into();
         }
@@ -354,6 +351,8 @@ impl MonitorController {
     ) {
         self.refresh_seconds = refresh_seconds.clamp(1, 3600);
         self.history_days = history_days.clamp(1, 3650);
+        crate::storage::settings::save_refresh_seconds_async(self.refresh_seconds);
+        crate::storage::settings::save_history_days_async(self.history_days);
         self.connect(email, password, cx);
     }
 

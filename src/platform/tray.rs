@@ -183,6 +183,9 @@ fn quit(_: &Quit, cx: &mut App) {
         cx.background_executor()
             .spawn(async { crate::storage::credentials::flush() })
             .await;
+        cx.background_executor()
+            .spawn(async { crate::storage::settings::flush() })
+            .await;
         if let Some(database) = database {
             cx.background_executor()
                 .spawn(async move {

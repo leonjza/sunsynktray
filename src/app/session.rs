@@ -7,7 +7,7 @@ use futures_util::future::{select, Either};
 use gpui_kit::*;
 use std::sync::atomic::Ordering;
 
-use super::{ConnectionState, MonitorController, TrayMetric};
+use super::{ConnectionState, MonitorController};
 
 impl MonitorController {
     pub(crate) fn connect(&mut self, email: String, password: String, cx: &mut Context<Self>) {
@@ -192,13 +192,6 @@ impl MonitorController {
                                     email,
                                     password,
                                     dashboard.refresh_token.clone(),
-                                    selected.clone(),
-                                    refresh_seconds,
-                                    dashboard.history_days,
-                                    dashboard
-                                        .tray_metric
-                                        .map(TrayMetric::saved_name)
-                                        .map(str::to_owned),
                                 );
                             }
                             let has_snapshot = snapshot.is_some();
@@ -307,6 +300,8 @@ impl MonitorController {
         let history_days_changed = self.history_days != history_days;
         self.refresh_seconds = refresh_seconds;
         self.history_days = history_days;
+        crate::storage::settings::save_refresh_seconds_async(refresh_seconds);
+        crate::storage::settings::save_history_days_async(history_days);
         let credentials_changed =
             self.credentials
                 .as_ref()
@@ -319,17 +314,7 @@ impl MonitorController {
                 self.start_polling(cx);
                 if self.send_poll_command(PollCommand::Refresh, cx) {
                     if let Some((email, password)) = self.credentials.clone() {
-                        credentials::save_async(
-                            email,
-                            password,
-                            self.refresh_token.clone(),
-                            self.selected_serial.clone(),
-                            refresh_seconds,
-                            self.history_days,
-                            self.tray_metric
-                                .map(TrayMetric::saved_name)
-                                .map(str::to_owned),
-                        );
+                        credentials::save_async(email, password, self.refresh_token.clone());
                     }
                 }
             } else {

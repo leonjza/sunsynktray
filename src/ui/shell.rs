@@ -20,6 +20,7 @@ pub(crate) struct StatusBar {
     source_fetching: bool,
     source_next_refresh_in: Option<u64>,
     source_refresh_generation: u64,
+    compact_view: bool,
 }
 
 impl Render for StatusBar {
@@ -31,6 +32,7 @@ impl Render for StatusBar {
             self.next_refresh_in,
             self.controller.clone(),
             self.connection_log_window.clone(),
+            self.compact_view,
         )
     }
 }
@@ -48,6 +50,7 @@ impl StatusBar {
             source_fetching: false,
             source_next_refresh_in: None,
             source_refresh_generation: 0,
+            compact_view: false,
         }
     }
 
@@ -58,6 +61,7 @@ impl StatusBar {
         fetching: bool,
         next_refresh_in: Option<u64>,
         refresh_generation: u64,
+        compact_view: bool,
         cx: &mut Context<Self>,
     ) {
         if self.screen == screen
@@ -65,6 +69,7 @@ impl StatusBar {
             && self.source_fetching == fetching
             && self.source_next_refresh_in == next_refresh_in
             && self.source_refresh_generation == refresh_generation
+            && self.compact_view == compact_view
         {
             return;
         }
@@ -77,6 +82,7 @@ impl StatusBar {
         self.source_fetching = fetching;
         self.source_next_refresh_in = next_refresh_in;
         self.source_refresh_generation = refresh_generation;
+        self.compact_view = compact_view;
         cx.notify();
     }
 }
@@ -84,9 +90,10 @@ impl StatusBar {
 pub(crate) fn toolbar(
     theme: &Theme,
     screen: Screen,
+    always_on_top: bool,
     entity: Entity<Dashboard>,
 ) -> impl IntoElement {
-    div()
+    let mut toolbar = div()
         .h_flex()
         .h(px(50.))
         .flex_shrink_0()
@@ -118,10 +125,43 @@ pub(crate) fn toolbar(
                 .when(screen != Screen::Settings, |b| b.ghost())
                 .xsmall()
                 .h(px(28.))
-                .on_click(move |_, _, cx| {
-                    entity.update(cx, |dashboard, cx| dashboard.open_settings(cx))
+                .on_click({
+                    let entity = entity.clone();
+                    move |_, _, cx| entity.update(cx, |dashboard, cx| dashboard.open_settings(cx))
                 }),
-        )
+        );
+
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    {
+        toolbar = toolbar.child(
+            Button::new("always-on-top")
+                .icon(Icon::default().path(if always_on_top {
+                    gpui_kit::assets::IconName::Pin.path()
+                } else {
+                    gpui_kit::assets::IconName::PinOff.path()
+                }))
+                .accessibility_label(if always_on_top {
+                    "Disable always on top"
+                } else {
+                    "Enable always on top"
+                })
+                .tooltip(if always_on_top {
+                    "Disable always on top"
+                } else {
+                    "Keep window on top"
+                })
+                .ghost()
+                .when(always_on_top, |button| button.primary())
+                .xsmall()
+                .on_click(move |_, window, cx| {
+                    entity.update(cx, |dashboard, cx| {
+                        dashboard.toggle_always_on_top(window, cx)
+                    });
+                }),
+        );
+    }
+
+    toolbar
 }
 
 fn render_status_bar(
@@ -131,6 +171,7 @@ fn render_status_bar(
     next_refresh_in: Option<u64>,
     controller: Entity<MonitorController>,
     connection_log_window: Arc<Mutex<Option<AnyWindowHandle>>>,
+    compact_view: bool,
 ) -> impl IntoElement {
     let show_activity = screen == Screen::Dashboard
         || fetching
@@ -158,7 +199,7 @@ fn render_status_bar(
         } else {
             Icon::new(IconName::Globe).size_4().into_any_element()
         })
-        .child(activity)
+        .when(!compact_view, |element| element.child(activity))
         .into_any_element();
     let connection_log = Button::new("connection-log")
         .icon(IconName::FileText)

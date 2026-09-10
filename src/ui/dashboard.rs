@@ -11,9 +11,11 @@ use crate::{
 use gpui_kit::component::{
     button::{Button, ButtonVariants},
     date_picker::{DatePicker, DatePickerState},
+    scroll::ScrollableElement,
     spinner::Spinner,
     FocusableExt, IconName, Sizable, StyledExt, Theme,
 };
+use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use std::sync::{Arc, Mutex};
 
@@ -29,6 +31,7 @@ pub(crate) fn render(
     chart_bounds: Arc<Mutex<Option<Bounds<Pixels>>>>,
     selected_inverter: Option<&InverterSummary>,
     entity: Entity<Dashboard>,
+    compact_view: bool,
 ) -> AnyElement {
     if matches!(connection, ConnectionState::Connecting) {
         return dashboard_placeholder(theme, entity, true, None);
@@ -53,80 +56,84 @@ pub(crate) fn render(
         };
         (name, inverter.serial.clone())
     });
-    div()
+    let mut dashboard = div()
         .v_flex()
         .flex_1()
+        .overflow_y_scrollbar()
         .p_4()
         .gap_4()
-        .child(
-            div()
-                .h_flex()
-                .items_center()
-                .gap_2()
-                .px_1()
-                .pb_3()
-                .border_b_1()
-                .border_color(theme.border)
-                .child(
-                    div()
-                        .h_flex()
-                        .items_center()
-                        .gap_1()
-                        .child(
-                            div().text_sm().font_weight(FontWeight::MEDIUM).child(
-                                identity
-                                    .as_ref()
-                                    .map(|(name, _)| name.clone())
-                                    .unwrap_or_else(|| "Inverter".into()),
+        .when(!compact_view, |dashboard| {
+            dashboard.child(
+                div()
+                    .h_flex()
+                    .items_center()
+                    .gap_2()
+                    .px_1()
+                    .pb_3()
+                    .border_b_1()
+                    .border_color(theme.border)
+                    .child(
+                        div()
+                            .h_flex()
+                            .items_center()
+                            .gap_1()
+                            .child(
+                                div().text_sm().font_weight(FontWeight::MEDIUM).child(
+                                    identity
+                                        .as_ref()
+                                        .map(|(name, _)| name.clone())
+                                        .unwrap_or_else(|| "Inverter".into()),
+                                ),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme.muted_foreground)
+                                    .child("·"),
+                            )
+                            .child(
+                                div().text_xs().text_color(theme.muted_foreground).child(
+                                    identity
+                                        .as_ref()
+                                        .map(|(_, serial)| serial.clone())
+                                        .unwrap_or_else(|| snapshot.inverter_sn.clone()),
+                                ),
                             ),
-                        )
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(theme.muted_foreground)
-                                .child("·"),
-                        )
-                        .child(
-                            div().text_xs().text_color(theme.muted_foreground).child(
-                                identity
-                                    .as_ref()
-                                    .map(|(_, serial)| serial.clone())
-                                    .unwrap_or_else(|| snapshot.inverter_sn.clone()),
+                    )
+                    .child(div().flex_1())
+                    .child(
+                        div()
+                            .h_flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme.muted_foreground)
+                                    .child("Solar yield"),
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .child(format_energy(snapshot.solar_yield_kwh)),
                             ),
-                        ),
-                )
-                .child(div().flex_1())
-                .child(
-                    div()
-                        .h_flex()
-                        .items_center()
-                        .gap_2()
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(theme.muted_foreground)
-                                .child("Solar yield"),
-                        )
-                        .child(
-                            div()
-                                .text_sm()
-                                .child(format_energy(snapshot.solar_yield_kwh)),
-                        ),
-                )
-                .child(
-                    Button::new("refresh")
-                        .icon(IconName::Redo2)
-                        .accessibility_label("Refresh dashboard")
-                        .tooltip("Refresh dashboard")
-                        .loading(fetching)
-                        .loading_icon(IconName::Redo2)
-                        .ghost()
-                        .xsmall()
-                        .on_click(move |_, _, cx| {
-                            refresh_entity.update(cx, |dashboard, cx| dashboard.refresh_now(cx));
-                        }),
-                ),
-        )
+                    )
+                    .child(
+                        Button::new("refresh")
+                            .icon(IconName::Redo2)
+                            .accessibility_label("Refresh dashboard")
+                            .tooltip("Refresh dashboard")
+                            .loading(fetching)
+                            .loading_icon(IconName::Redo2)
+                            .ghost()
+                            .xsmall()
+                            .on_click(move |_, _, cx| {
+                                refresh_entity
+                                    .update(cx, |dashboard, cx| dashboard.refresh_now(cx));
+                            }),
+                    ),
+            )
+        })
         .child(
             div()
                 .v_flex()
@@ -145,8 +152,11 @@ pub(crate) fn render(
                     entity.clone(),
                 )),
         )
-        .child(power_state_view::render(theme, snapshot, live))
-        .child(history_chart(
+        .when(!compact_view, |dashboard| {
+            dashboard.child(power_state_view::render(theme, snapshot, live))
+        });
+    if !compact_view {
+        dashboard = dashboard.child(history_chart(
             theme,
             data.history,
             history_date_picker,
@@ -154,8 +164,9 @@ pub(crate) fn render(
             hovered_history,
             chart_bounds,
             entity,
-        ))
-        .into_any_element()
+        ));
+    }
+    dashboard.into_any_element()
 }
 
 fn dashboard_placeholder(

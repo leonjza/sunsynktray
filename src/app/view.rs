@@ -34,6 +34,17 @@ impl Render for Dashboard {
                         input.set_value(history_days.to_string(), window, cx)
                     });
                 }
+                self.always_on_top = self.controller.read(cx).always_on_top;
+                self.compact_view = self.controller.read(cx).compact_view;
+                if self.always_on_top {
+                    if !crate::platform::set_window_always_on_top(window, true) {
+                        tracing::warn!("could not apply persisted always-on-top setting");
+                        self.always_on_top = false;
+                    }
+                }
+                if self.compact_view {
+                    self.apply_compact_window_size(window);
+                }
             }
             self.credentials_synced = true;
         }
@@ -55,6 +66,7 @@ impl Render for Dashboard {
                 status_fetching,
                 status_next_refresh_in,
                 status_refresh_generation,
+                self.compact_view,
                 cx,
             );
         });
@@ -83,7 +95,12 @@ impl Render for Dashboard {
             }
         });
         root.child(gpui_kit::component::TitleBar::new())
-            .child(shell::toolbar(theme, self.screen, entity.clone()))
+            .child(shell::toolbar(
+                theme,
+                self.screen,
+                self.always_on_top,
+                entity.clone(),
+            ))
             .child(match self.screen {
                 Screen::Dashboard => dashboard_view::render(
                     theme,
@@ -98,6 +115,7 @@ impl Render for Dashboard {
                         Some(&inverter.serial) == controller.selected_serial.as_ref()
                     }),
                     entity.clone(),
+                    self.compact_view,
                 ),
                 Screen::Settings => settings_view::render(SettingsView {
                     theme,
@@ -109,6 +127,7 @@ impl Render for Dashboard {
                     inverters: &controller.inverters,
                     selected: &controller.selected_serial,
                     tray_metric: controller.tray_metric,
+                    compact_view: self.compact_view,
                     startup_enabled: self.startup_enabled,
                     startup_pending: self.startup_pending,
                     startup_error: self.startup_error.clone(),

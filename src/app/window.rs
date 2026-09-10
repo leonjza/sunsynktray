@@ -16,7 +16,9 @@ pub(crate) fn open_main_window(
             is_resizable: true,
             focus: show,
             show,
-            window_min_size: Some(size(px(560.), px(800.))),
+            // The dashboard body is scrollable, and compact mode needs to be
+            // able to resize the native window below the full dashboard size.
+            window_min_size: Some(size(px(560.), px(360.))),
             ..Default::default()
         },
         |window, cx| {

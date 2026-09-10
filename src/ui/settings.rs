@@ -24,6 +24,7 @@ pub(crate) fn render(view: SettingsView<'_>) -> AnyElement {
         inverters,
         selected,
         tray_metric,
+        compact_view,
         startup_enabled,
         startup_pending,
         startup_error,
@@ -162,7 +163,35 @@ pub(crate) fn render(view: SettingsView<'_>) -> AnyElement {
                 .when_some(startup_error, |element, error| {
                     element.child(div().text_xs().text_color(theme.danger).child(error))
                 })
-                .child(tray_metric_control(theme, tray_metric, entity.clone())),
+                .child(tray_metric_control(theme, tray_metric, entity.clone()))
+                .child(
+                    div()
+                        .h_flex()
+                        .items_center()
+                        .justify_between()
+                        .child(
+                            div()
+                                .v_flex()
+                                .gap_1()
+                                .child(div().text_sm().child("Minimal dashboard"))
+                                .child(
+                                    div().text_xs().text_color(theme.muted_foreground).child(
+                                        "Hide the history graph and compact the status bar.",
+                                    ),
+                                ),
+                        )
+                        .child({
+                            let entity = entity.clone();
+                            Switch::new("minimal-dashboard")
+                                .checked(compact_view)
+                                .small()
+                                .on_click(move |enabled, window, cx| {
+                                    entity.update(cx, |dashboard, cx| {
+                                        dashboard.set_compact_view(*enabled, window, cx);
+                                    });
+                                })
+                        }),
+                ),
         ))
         .into_any_element()
 }
@@ -334,6 +363,7 @@ pub(crate) struct SettingsView<'a> {
     pub(crate) inverters: &'a [InverterSummary],
     pub(crate) selected: &'a Option<String>,
     pub(crate) tray_metric: Option<TrayMetric>,
+    pub(crate) compact_view: bool,
     pub(crate) startup_enabled: bool,
     pub(crate) startup_pending: bool,
     pub(crate) startup_error: Option<String>,

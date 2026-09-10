@@ -45,6 +45,8 @@ pub(crate) struct MonitorController {
     pub(crate) refresh_generation: u64,
     pub(crate) has_cached_data: bool,
     pub(crate) tray_metric: Option<TrayMetric>,
+    pub(crate) always_on_top: bool,
+    pub(crate) compact_view: bool,
     pub(crate) history_date: chrono::NaiveDate,
     pub(crate) history_source: HistorySource,
     pub(crate) history_cache:
@@ -99,6 +101,8 @@ impl MonitorController {
             refresh_generation: 0,
             has_cached_data,
             tray_metric: None,
+            always_on_top: false,
+            compact_view: false,
             history_date: chrono::Local::now().date_naive(),
             history_source: HistorySource::Cached,
             history_cache: HashMap::new(),
@@ -184,35 +188,42 @@ impl MonitorController {
                 .background_executor()
                 .spawn(async move {
                     let saved = credentials::load()?;
+                    let preferences = crate::storage::settings::load()?.unwrap_or_default();
+                    let selected_serial = preferences.selected_serial.clone();
                     let cached = saved.as_ref().map(|saved| {
                         (
                             database.load_snapshot(saved.email.clone()).ok().flatten(),
                             database
                                 .load_history(
                                     saved.email.clone(),
-                                    saved.selected_serial.clone(),
+                                    selected_serial.clone(),
                                     chrono::Local::now().date_naive().to_string(),
                                 )
                                 .unwrap_or_default(),
                         )
                     });
-                    Ok::<_, anyhow::Error>((saved, cached))
+                    Ok::<_, anyhow::Error>((saved, cached, preferences, selected_serial))
                 })
                 .await;
             entity.update(cx, |controller, cx| {
                 controller.credentials_loaded = true;
                 match result {
-                    Ok((Some(saved), Some((cached_snapshot, cached_history)))) => {
+                    Ok((
+                        Some(saved),
+                        Some((cached_snapshot, cached_history)),
+                        preferences,
+                        selected_serial,
+                    )) => {
                         let email = saved.email.clone();
                         let password = saved.password.clone();
                         let cached_history_for_cache = cached_history.clone();
-                        if let Some(snapshot) = cached_snapshot.or(saved.cached_snapshot.clone()) {
+                        if let Some(snapshot) = cached_snapshot {
                             controller.state.set_cached_data(snapshot, cached_history);
                             controller.has_cached_data = true;
                         } else if !cached_history.is_empty() {
                             controller.state.set_history(cached_history);
                         }
-                        if let Some(serial) = saved.selected_serial.clone() {
+                        if let Some(serial) = selected_serial.clone() {
                             if !cached_history_for_cache.is_empty() {
                                 controller.cache_history(
                                     serial,
@@ -227,14 +238,15 @@ impl MonitorController {
                         } else {
                             ConnectionState::Connecting
                         };
-                        controller.selected_serial = saved.selected_serial;
+                        controller.selected_serial = selected_serial;
                         controller.credentials = Some((email.clone(), password.clone()));
                         controller.refresh_token = saved.refresh_token;
-                        controller.refresh_seconds =
-                            saved.refresh_seconds.unwrap_or(60).clamp(1, 3600);
-                        controller.history_days = saved.history_days.unwrap_or(365).clamp(1, 3650);
+                        controller.refresh_seconds = preferences.refresh_seconds.clamp(1, 3600);
+                        controller.history_days = preferences.history_days.clamp(1, 3650);
                         controller.tray_metric =
-                            TrayMetric::from_saved(saved.tray_metric.as_deref());
+                            TrayMetric::from_saved(preferences.tray_metric.as_deref());
+                        controller.always_on_top = preferences.always_on_top;
+                        controller.compact_view = preferences.compact_view;
                         controller.activity = if controller.has_cached_data {
                             "Reconnecting…"
                         } else {
@@ -243,15 +255,22 @@ impl MonitorController {
                         .into();
                         controller.connect(email, password, cx);
                     }
-                    Ok((Some(saved), None)) => {
+                    Ok((Some(saved), None, preferences, selected_serial)) => {
                         let email = saved.email.clone();
                         let password = saved.password.clone();
                         controller.connection = ConnectionState::Connecting;
                         controller.credentials = Some((email.clone(), password.clone()));
                         controller.refresh_token = saved.refresh_token;
+                        controller.selected_serial = selected_serial;
+                        controller.refresh_seconds = preferences.refresh_seconds.clamp(1, 3600);
+                        controller.history_days = preferences.history_days.clamp(1, 3650);
+                        controller.tray_metric =
+                            TrayMetric::from_saved(preferences.tray_metric.as_deref());
+                        controller.always_on_top = preferences.always_on_top;
+                        controller.compact_view = preferences.compact_view;
                         controller.connect(email, password, cx);
                     }
-                    Ok((None, _)) => {
+                    Ok((None, _, _, _)) => {
                         controller.connection = ConnectionState::Unconfigured;
                         controller.activity = "No account configured".into();
                         controller.update_tray(cx);
@@ -271,12 +290,9 @@ impl MonitorController {
 
     pub(crate) fn set_tray_metric(&mut self, metric: Option<TrayMetric>, cx: &mut Context<Self>) {
         self.tray_metric = metric;
-        if let Some((email, _)) = &self.credentials {
-            credentials::save_tray_metric_async(
-                email.clone(),
-                metric.map(TrayMetric::saved_name).map(str::to_owned),
-            );
-        }
+        crate::storage::settings::save_tray_metric_async(
+            metric.map(TrayMetric::saved_name).map(str::to_owned),
+        );
         self.update_tray(cx);
         cx.notify();
     }
