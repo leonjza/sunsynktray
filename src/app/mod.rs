@@ -371,7 +371,7 @@ impl Dashboard {
     }
 
     pub(crate) fn apply_compact_window_size(&mut self, window: &mut Window) {
-        if self.compact_view {
+        if self.compact_view && window.bounds().size.height != px(COMPACT_WINDOW_HEIGHT) {
             self.normal_window_size = window.bounds().size;
             window.resize(size(
                 self.normal_window_size.width,

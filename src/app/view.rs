@@ -43,7 +43,11 @@ impl Render for Dashboard {
                     }
                 }
                 if self.compact_view {
-                    self.apply_compact_window_size(window);
+                    // Resizing during render can synchronously trigger another
+                    // render and cause GPUI to lease this entity twice.
+                    cx.defer_in(window, |dashboard, window, _cx| {
+                        dashboard.apply_compact_window_size(window);
+                    });
                 }
             }
             self.credentials_synced = true;
