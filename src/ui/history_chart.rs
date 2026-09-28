@@ -4,9 +4,9 @@ use crate::{
     ui::format::{format_power, history_colors, history_label, history_value, series_color_index},
 };
 use gpui_component_macros::IntoPlot;
-use gpui_kit::component::plot::scale::{Scale, ScaleLinear};
-use gpui_kit::component::plot::shape::Line;
-use gpui_kit::component::plot::{AxisText, Grid, Plot, PlotAxis, StrokeStyle};
+use gpui_kit::base::plot::scale::{Scale, ScaleLinear};
+use gpui_kit::base::plot::shape::Line;
+use gpui_kit::base::plot::{axis_gutter, AxisText, Grid, Plot, PlotAxis};
 use gpui_kit::component::{ActiveTheme, StyledExt, Theme};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
@@ -36,7 +36,7 @@ impl Plot for HistoryPlot {
             return;
         }
         let width = bounds.size.width.as_f32();
-        let height = bounds.size.height.as_f32() - gpui_kit::component::plot::AXIS_GAP;
+        let height = bounds.size.height.as_f32() - axis_gutter(px(10.));
         let plot_bounds = Bounds::new(
             point(bounds.origin.x + px(PLOT_LEFT), bounds.origin.y),
             size(px(width - PLOT_LEFT), bounds.size.height),
@@ -46,7 +46,7 @@ impl Plot for HistoryPlot {
         }
         let plot_width = plot_bounds.size.width.as_f32();
         let (min_value, max_value) = self.power_bounds;
-        let y = ScaleLinear::new(vec![min_value, max_value], vec![height, PLOT_TOP]);
+        let y = ScaleLinear::new([min_value, max_value], [height, PLOT_TOP]);
         let y_ticks = [min_value, (min_value + max_value) / 2., max_value];
         let tick_margin = (self.times.len() / 5).max(1);
         let x_labels = self.times.iter().enumerate().filter_map(|(index, label)| {
@@ -112,11 +112,10 @@ impl Plot for HistoryPlot {
                 })
                 .y(move |point| y_scale.tick(&point.watts))
                 .stroke(colors[series_color_index(&series.label) % colors.len()])
-                .stroke_style(StrokeStyle::Natural)
                 .stroke_width(px(1.5))
                 .paint(&plot_bounds, window);
         }
-        let soc_y = ScaleLinear::new(vec![0., 100.], vec![height, PLOT_TOP]);
+        let soc_y = ScaleLinear::new([0., 100.], [height, PLOT_TOP]);
         for &index in &self.soc_indices {
             let series = &self.history[index];
             let time_indices = self.time_indices.clone();
@@ -131,7 +130,6 @@ impl Plot for HistoryPlot {
                 })
                 .y(move |point| y_scale.tick(&point.watts))
                 .stroke(colors[series_color_index(&series.label) % colors.len()])
-                .stroke_style(StrokeStyle::Natural)
                 .stroke_width(px(1.5))
                 .paint(&plot_bounds, window);
         }
@@ -192,7 +190,7 @@ pub(crate) fn hover_layer(
     hovered: Option<usize>,
 ) -> impl IntoElement {
     let (min_value, max_value) = power_bounds;
-    let chart_height = HEIGHT - gpui_kit::component::plot::AXIS_GAP;
+    let chart_height = HEIGHT - axis_gutter(px(10.));
     let mut layer = div()
         .absolute()
         .top_0()

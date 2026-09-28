@@ -3,7 +3,7 @@ use chrono::Datelike;
 use futures_util::future::{select, Either};
 use gpui_kit::component::{
     calendar::Date,
-    date_picker::{DatePickerEvent, DatePickerState},
+    date_picker::{DatePickerEvent, DatePickerState, DateTime},
     input::InputState,
 };
 use gpui_kit::*;
@@ -114,8 +114,8 @@ impl Dashboard {
         let date_picker_subscription = cx.subscribe(
             &history_date_picker,
             |dashboard, _, event: &DatePickerEvent, cx| {
-                if let DatePickerEvent::Change(Date::Single(Some(date))) = event {
-                    dashboard.select_history_date(*date, cx);
+                if let DatePickerEvent::Change(DateTime::Single(Some(date))) = event {
+                    dashboard.select_history_date(date.date(), cx);
                 }
             },
         );
