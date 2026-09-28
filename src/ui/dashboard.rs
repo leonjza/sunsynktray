@@ -13,7 +13,7 @@ use gpui_kit::component::{
     date_picker::{DatePicker, DatePickerState},
     scroll::ScrollableElement,
     spinner::Spinner,
-    FocusableExt, IconName, Sizable, StyledExt, Theme,
+    FocusableExt, Icon, IconName, Sizable, StyledExt, Theme,
 };
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
@@ -120,11 +120,11 @@ pub(crate) fn render(
                     )
                     .child(
                         Button::new("refresh")
-                            .icon(IconName::Redo2)
+                            .icon(Icon::empty().path("icons/refresh-cw.svg"))
                             .accessibility_label("Refresh dashboard")
                             .tooltip("Refresh dashboard")
                             .loading(fetching)
-                            .loading_icon(IconName::Redo2)
+                            .loading_icon(Icon::empty().path("icons/refresh-cw.svg"))
                             .ghost()
                             .xsmall()
                             .on_click(move |_, _, cx| {
