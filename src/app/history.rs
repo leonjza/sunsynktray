@@ -23,12 +23,4 @@ impl Dashboard {
             controller.select_history_date(date, cx)
         });
     }
-
-    pub(crate) fn hover_history(&mut self, index: Option<usize>, cx: &mut Context<Self>) {
-        if self.hovered_history == index {
-            return;
-        }
-        self.hovered_history = index;
-        cx.notify();
-    }
 }

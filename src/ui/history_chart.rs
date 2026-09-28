@@ -1,16 +1,19 @@
 use crate::{
-    app::{Dashboard, HistoryPointIndex},
+    app::HistoryPointIndex,
     domain::HistorySeries,
     ui::format::{format_power, history_colors, history_label, history_value, series_color_index},
 };
 use gpui_component_macros::IntoPlot;
 use gpui_kit::base::plot::scale::{Scale, ScaleLinear};
 use gpui_kit::base::plot::shape::Line;
-use gpui_kit::base::plot::{axis_gutter, AxisText, Grid, Plot, PlotAxis};
-use gpui_kit::component::{ActiveTheme, StyledExt, Theme};
-use gpui_kit::prelude::FluentBuilder;
+use gpui_kit::base::plot::PathCaches;
+use gpui_kit::base::plot::{axis_gutter, AxisText, Grid, Plot, PlotAxis, TooltipState};
+use gpui_kit::component::{
+    plot::tooltip::{CrossLine, Dot, Tooltip},
+    ActiveTheme, StyledExt, Theme,
+};
 use gpui_kit::*;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 pub(crate) const HEIGHT: f32 = 290.;
 const PLOT_LEFT: f32 = 42.;
@@ -19,19 +22,16 @@ const PLOT_TOP: f32 = 10.;
 #[derive(IntoPlot)]
 pub(crate) struct HistoryPlot {
     pub(crate) history: Arc<Vec<HistorySeries>>,
+    pub(crate) point_index: Arc<HistoryPointIndex>,
     pub(crate) power_indices: Vec<usize>,
     pub(crate) soc_indices: Vec<usize>,
     pub(crate) times: Arc<Vec<String>>,
     pub(crate) time_indices: Arc<std::collections::HashMap<String, usize>>,
-    pub(crate) chart_bounds: Arc<Mutex<Option<Bounds<Pixels>>>>,
     pub(crate) power_bounds: (f64, f64),
 }
 
 impl Plot for HistoryPlot {
     fn paint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-        if let Ok(mut chart_bounds) = self.chart_bounds.lock() {
-            *chart_bounds = None;
-        }
         if self.times.is_empty() {
             return;
         }
@@ -41,9 +41,6 @@ impl Plot for HistoryPlot {
             point(bounds.origin.x + px(PLOT_LEFT), bounds.origin.y),
             size(px(width - PLOT_LEFT), bounds.size.height),
         );
-        if let Ok(mut chart_bounds) = self.chart_bounds.lock() {
-            *chart_bounds = Some(plot_bounds);
-        }
         let plot_width = plot_bounds.size.width.as_f32();
         let (min_value, max_value) = self.power_bounds;
         let y = ScaleLinear::new([min_value, max_value], [height, PLOT_TOP]);
@@ -98,41 +95,140 @@ impl Plot for HistoryPlot {
             .dash_array(&[px(4.), px(2.)])
             .paint(&plot_bounds, window);
         let colors = history_colors();
-        for &index in &self.power_indices {
-            let series = &self.history[index];
-            let time_indices = self.time_indices.clone();
-            let times_len = self.times.len();
-            let y_scale = y.clone();
-            Line::new()
-                .data(series.points.iter())
-                .x(move |point| {
-                    time_indices
-                        .get(&point.time)
-                        .map(|&index| x_position(index, times_len, plot_width))
-                })
-                .y(move |point| y_scale.tick(&point.watts))
-                .stroke(colors[series_color_index(&series.label) % colors.len()])
-                .stroke_width(px(1.5))
-                .paint(&plot_bounds, window);
-        }
         let soc_y = ScaleLinear::new([0., 100.], [height, PLOT_TOP]);
-        for &index in &self.soc_indices {
-            let series = &self.history[index];
-            let time_indices = self.time_indices.clone();
-            let times_len = self.times.len();
-            let y_scale = soc_y.clone();
-            Line::new()
-                .data(series.points.iter())
-                .x(move |point| {
-                    time_indices
-                        .get(&point.time)
-                        .map(|&index| x_position(index, times_len, plot_width))
-                })
-                .y(move |point| y_scale.tick(&point.watts))
-                .stroke(colors[series_color_index(&series.label) % colors.len()])
-                .stroke_width(px(1.5))
-                .paint(&plot_bounds, window);
+        let caches = PathCaches::for_paint("history-lines", window, cx);
+        caches.update(cx, |caches, _| {
+            for (slot, &index) in self
+                .power_indices
+                .iter()
+                .chain(&self.soc_indices)
+                .enumerate()
+            {
+                let series = &self.history[index];
+                let time_indices = self.time_indices.clone();
+                let times_len = self.times.len();
+                let y_scale = if self.soc_indices.contains(&index) {
+                    soc_y.clone()
+                } else {
+                    y.clone()
+                };
+                Line::new()
+                    .data(series.points.iter())
+                    .x(move |point| {
+                        time_indices
+                            .get(&point.time)
+                            .map(|&index| x_position(index, times_len, plot_width))
+                    })
+                    .y(move |point| y_scale.tick(&point.watts))
+                    .stroke(colors[series_color_index(&series.label) % colors.len()])
+                    .stroke_width(px(1.5))
+                    .paint_cached(&plot_bounds, caches.slot(slot), window);
+            }
+        });
+    }
+
+    fn id(&self) -> Option<ElementId> {
+        Some("history-plot".into())
+    }
+
+    fn tooltip_state(
+        &self,
+        position: Point<Pixels>,
+        bounds: Bounds<Pixels>,
+        _cx: &App,
+    ) -> Option<TooltipState> {
+        let plot_width = bounds.size.width.as_f32() - PLOT_LEFT;
+        let plot_height = bounds.size.height.as_f32() - axis_gutter(px(10.));
+        let x = position.x.as_f32() - PLOT_LEFT;
+        let y = position.y.as_f32();
+        if self.times.is_empty()
+            || plot_width <= 0.
+            || x < 0.
+            || x > plot_width
+            || y < PLOT_TOP
+            || y > plot_height
+        {
+            return None;
         }
+        let index =
+            ((x / plot_width) * (self.times.len().saturating_sub(1) as f32)).round() as usize;
+        let index = index.min(self.times.len() - 1);
+        let (min_value, max_value) = self.power_bounds;
+        let power_y_scale = ScaleLinear::new([min_value, max_value], [plot_height, PLOT_TOP]);
+        let soc_y_scale = ScaleLinear::new([0., 100.], [plot_height, PLOT_TOP]);
+        let time = &self.times[index];
+        let dots = self
+            .history
+            .iter()
+            .enumerate()
+            .filter_map(|(series_index, _series)| {
+                let value = *self.point_index.get(&series_index)?.get(time)?;
+                let is_soc = self.soc_indices.contains(&series_index);
+                let y = if is_soc {
+                    soc_y_scale.tick(&value)?
+                } else {
+                    power_y_scale.tick(&value)?
+                };
+                Some(point(
+                    px(PLOT_LEFT + x_position(index, self.times.len(), plot_width)),
+                    px(y),
+                ))
+            })
+            .collect::<Vec<_>>();
+        Some(TooltipState::new(
+            index,
+            point(
+                px(PLOT_LEFT + x_position(index, self.times.len(), plot_width)),
+                position.y,
+            ),
+            dots,
+        ))
+    }
+
+    fn tooltip(
+        &self,
+        state: &TooltipState,
+        cursor: Point<Pixels>,
+        bounds: Bounds<Pixels>,
+        _window: &mut Window,
+        cx: &mut App,
+    ) -> Option<AnyElement> {
+        let time = self.times.get(state.index)?;
+        let plot_height = bounds.size.height.as_f32() - axis_gutter(px(10.));
+        let colors = history_colors();
+        let dot_colors = self
+            .history
+            .iter()
+            .enumerate()
+            .filter_map(|(index, series)| {
+                self.point_index.get(&index)?.get(time)?;
+                Some(colors[series_color_index(&series.label) % colors.len()])
+            });
+        let mut tooltip = Tooltip::new(cursor, bounds.size)
+            .gap(px(8.))
+            .cross_line(CrossLine::new(state.cross_line).height(plot_height))
+            .dots(state.dots.iter().zip(dot_colors).map(|(point, color)| {
+                Dot::new(*point)
+                    .size(px(7.))
+                    .halo(px(10.))
+                    .stroke(cx.theme().background)
+                    .fill(color)
+            }));
+        for (index, series) in self.history.iter().enumerate() {
+            if let Some(value) = self
+                .point_index
+                .get(&index)
+                .and_then(|points| points.get(time))
+            {
+                let color = colors[series_color_index(&series.label) % colors.len()];
+                tooltip = tooltip.row(
+                    color,
+                    history_label(&series.label),
+                    history_value(&series.label, *value),
+                );
+            }
+        }
+        Some(tooltip.title(time.clone()).into_any_element())
     }
 }
 
@@ -141,14 +237,6 @@ fn x_position(index: usize, count: usize, width: f32) -> f32 {
         0.
     } else {
         index as f32 / (count - 1) as f32 * width
-    }
-}
-
-fn power_y(value: f64, min: f64, max: f64, height: f32) -> f32 {
-    if (max - min).abs() < f64::EPSILON {
-        height / 2.
-    } else {
-        height - ((value - min) as f32 / (max - min) as f32) * (height - PLOT_TOP)
     }
 }
 
@@ -176,149 +264,4 @@ pub(crate) fn legend(theme: &Theme, history: &[HistorySeries]) -> impl IntoEleme
         );
     }
     legend
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn hover_layer(
-    theme: &Theme,
-    history: &[HistorySeries],
-    power_indices: &[usize],
-    point_index: &HistoryPointIndex,
-    power_bounds: (f64, f64),
-    entity: Entity<Dashboard>,
-    times: &[String],
-    hovered: Option<usize>,
-) -> impl IntoElement {
-    let (min_value, max_value) = power_bounds;
-    let chart_height = HEIGHT - axis_gutter(px(10.));
-    let mut layer = div()
-        .absolute()
-        .top_0()
-        .left(px(PLOT_LEFT))
-        .right_0()
-        .bottom_0()
-        .h_flex();
-    let hover_entity = entity.clone();
-    layer.interactivity().on_hover(move |is_hovered, _, cx| {
-        if !*is_hovered {
-            hover_entity.update(cx, |dashboard, cx| dashboard.hover_history(None, cx));
-        }
-    });
-    for index in 0..times.len() {
-        let cell_entity = entity.clone();
-        let hover_time = times.get(index).map(String::as_str);
-        let mut cell = div().flex_1().h_full().relative();
-        if hovered == Some(index) {
-            let colors = history_colors();
-            let power_dots = power_indices.iter().filter_map(|&index| {
-                let series = history.get(index)?;
-                let time = hover_time?;
-                let watts = point_index.get(&index)?.get(time)?;
-                let y = power_y(*watts, min_value, max_value, chart_height);
-                Some((y, colors[series_color_index(&series.label) % colors.len()]))
-            });
-            let soc_dots = history
-                .iter()
-                .enumerate()
-                .filter(|(_, series)| series.label.to_ascii_lowercase().contains("soc"))
-                .filter_map(|(index, series)| {
-                    let time = hover_time?;
-                    let value = point_index.get(&index)?.get(time)?.clamp(0., 100.);
-                    Some((
-                        chart_height - (value as f32 / 100.) * (chart_height - PLOT_TOP),
-                        colors[series_color_index(&series.label) % colors.len()],
-                    ))
-                });
-            let mut dots = div().absolute().top_0().left_0().right_0().bottom_0();
-            for (y, color) in power_dots.chain(soc_dots) {
-                dots = dots.child(
-                    div()
-                        .absolute()
-                        .left(relative(0.5))
-                        .top(px(y - 3.5))
-                        .ml(px(-3.5))
-                        .size(px(7.))
-                        .rounded_full()
-                        .border_1()
-                        .border_color(theme.background)
-                        .bg(color),
-                );
-            }
-            let mut values = div().v_flex().gap_1();
-            for (series_index, series) in history.iter().enumerate() {
-                if let Some(time) = hover_time {
-                    if let Some(watts) = point_index
-                        .get(&series_index)
-                        .and_then(|points| points.get(time))
-                    {
-                        values =
-                            values.child(
-                                div()
-                                    .h_flex()
-                                    .gap_2()
-                                    .child(
-                                        div().size_2().rounded_full().bg(colors
-                                            [series_color_index(&series.label) % colors.len()]),
-                                    )
-                                    .child(div().text_xs().child(format!(
-                                        "{}  {}",
-                                        history_label(&series.label),
-                                        history_value(&series.label, *watts)
-                                    ))),
-                            );
-                    }
-                }
-            }
-            let card = div()
-                .absolute()
-                .top(px((chart_height / 2. - 72.).max(8.)))
-                .w(px(168.))
-                .p_2()
-                .border_1()
-                .border_color(theme.border)
-                .rounded_sm()
-                .bg(theme.background.opacity(0.94))
-                .when(index < times.len() / 2, |element| element.left_2())
-                .when(index >= times.len() / 2, |element| element.right_2())
-                .child(
-                    div()
-                        .v_flex()
-                        .gap_1()
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(theme.muted_foreground)
-                                .child(hover_time.unwrap_or_default().to_owned()),
-                        )
-                        .child(values),
-                );
-            cell = cell
-                .when(true, |element| {
-                    element.bg(gpui_kit::transparent_white().opacity(0.03))
-                })
-                .child(
-                    div()
-                        .absolute()
-                        .top_0()
-                        .bottom_0()
-                        .left(relative(0.5))
-                        .ml(px(-0.5))
-                        .w(px(1.))
-                        .bg(theme.border),
-                )
-                .child(dots)
-                .child(card);
-        }
-        cell = cell.on_mouse_move(move |_, _, cx| {
-            cell_entity.update(cx, |dashboard, cx| dashboard.hover_history(Some(index), cx));
-        });
-        let exit_entity = entity.clone();
-        cell.interactivity().on_hover(move |is_hovered, _, cx| {
-            if !*is_hovered {
-                exit_entity.update(cx, |dashboard, cx| dashboard.hover_history(None, cx));
-            }
-        });
-        layer = layer.child(cell);
-    }
-    layer
 }

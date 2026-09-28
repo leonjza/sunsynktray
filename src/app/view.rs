@@ -7,7 +7,6 @@ use crate::{
     },
 };
 use gpui_kit::component::{ActiveTheme, StyledExt};
-use gpui_kit::prelude::InteractiveElement;
 use gpui_kit::*;
 
 impl Render for Dashboard {
@@ -77,27 +76,11 @@ impl Render for Dashboard {
         let controller = self.controller.read(cx);
         let theme = cx.theme();
         let entity = cx.entity().clone();
-        let chart_bounds = self.chart_bounds.clone();
-        let hover_entity = entity.clone();
-        let mut root = div()
+        let root = div()
             .v_flex()
             .size_full()
             .bg(theme.background)
             .text_color(theme.foreground);
-        root = root.on_mouse_move(move |event, _, cx| {
-            let inside_chart = chart_bounds
-                .lock()
-                .ok()
-                .and_then(|bounds| {
-                    bounds
-                        .as_ref()
-                        .map(|bounds| bounds.contains(&event.position))
-                })
-                .unwrap_or(false);
-            if !inside_chart {
-                hover_entity.update(cx, |dashboard, cx| dashboard.hover_history(None, cx));
-            }
-        });
         root.child(gpui_kit::component::TitleBar::new())
             .child(shell::toolbar(
                 theme,
@@ -113,8 +96,6 @@ impl Render for Dashboard {
                     status_fetching,
                     self.history_date_picker.clone(),
                     controller.history_source,
-                    self.hovered_history,
-                    self.chart_bounds.clone(),
                     controller.inverters.iter().find(|inverter| {
                         Some(&inverter.serial) == controller.selected_serial.as_ref()
                     }),

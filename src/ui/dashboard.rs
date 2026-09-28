@@ -29,8 +29,6 @@ pub(crate) fn render(
     fetching: bool,
     history_date_picker: Entity<DatePickerState>,
     history_source: HistorySource,
-    hovered_history: Option<usize>,
-    chart_bounds: Arc<Mutex<Option<Bounds<Pixels>>>>,
     selected_inverter: Option<&InverterSummary>,
     entity: Entity<Dashboard>,
     controller: Entity<MonitorController>,
@@ -187,8 +185,6 @@ pub(crate) fn render(
             data.history,
             history_date_picker,
             history_source,
-            hovered_history,
-            chart_bounds,
             entity,
         ));
     }
@@ -259,48 +255,29 @@ fn dashboard_placeholder(
         .into_any_element()
 }
 
-#[allow(clippy::too_many_arguments)]
 fn history_chart(
     theme: &Theme,
     history: crate::app::HistorySnapshot,
     history_date_picker: Entity<DatePickerState>,
     source: HistorySource,
-    hovered: Option<usize>,
-    chart_bounds: Arc<Mutex<Option<Bounds<Pixels>>>>,
     entity: Entity<Dashboard>,
 ) -> AnyElement {
     let previous = entity.clone();
     let next = entity.clone();
-    let chart_entity = entity.clone();
-    let mut chart = div()
+    let chart = div()
         .id("history-chart")
         .relative()
         .w_full()
         .h(px(history_chart_module::HEIGHT))
         .child(history_chart_module::HistoryPlot {
             history: history.series.clone(),
+            point_index: history.index.clone(),
             power_indices: history.power_indices.as_ref().clone(),
             soc_indices: history.soc_indices.as_ref().clone(),
             times: history.times.clone(),
             time_indices: history.time_indices.clone(),
-            chart_bounds,
             power_bounds: history.power_bounds,
-        })
-        .child(history_chart_module::hover_layer(
-            theme,
-            &history.series,
-            &history.power_indices,
-            &history.index,
-            history.power_bounds,
-            entity.clone(),
-            &history.times,
-            hovered,
-        ));
-    chart.interactivity().on_hover(move |is_hovered, _, cx| {
-        if !*is_hovered {
-            chart_entity.update(cx, |dashboard, cx| dashboard.hover_history(None, cx));
-        }
-    });
+        });
     div()
         .v_flex()
         .gap_2()
