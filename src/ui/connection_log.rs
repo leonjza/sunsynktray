@@ -1,10 +1,11 @@
 use crate::app::{ConnectionState, MonitorController};
+use gpui_kit::component::ChildElement;
 use gpui_kit::component::{
-    scroll::ScrollableElement,
-    table::{Table, TableBody, TableCell, TableHead, TableHeader, TableRow},
+    table::{Table, TableCell, TableHead, TableHeader, TableRow},
     ActiveTheme, Sizable, StyledExt, TitleBar,
 };
 use gpui_kit::*;
+use std::sync::Arc;
 
 const DATE_COLUMN_WIDTH: Pixels = px(184.);
 const ID_COLUMN_WIDTH: Pixels = px(42.);
@@ -15,7 +16,8 @@ const DURATION_COLUMN_WIDTH: Pixels = px(76.);
 pub(crate) struct ConnectionLogView {
     pub(crate) controller: Entity<MonitorController>,
     cached_revision: u64,
-    rows: Vec<LogRow>,
+    rows: Arc<Vec<LogRow>>,
+    scroll_handle: UniformListScrollHandle,
 }
 
 impl ConnectionLogView {
@@ -32,7 +34,8 @@ impl ConnectionLogView {
         Self {
             controller,
             cached_revision: u64::MAX,
-            rows: Vec::new(),
+            rows: Arc::new(Vec::new()),
+            scroll_handle: UniformListScrollHandle::new(),
         }
     }
 }
@@ -56,89 +59,115 @@ impl Render for ConnectionLogView {
                 .connection_log
                 .lock()
                 .unwrap_or_else(|error| error.into_inner());
-            self.rows = connection_log
-                .iter()
-                .rev()
-                .map(|entry| parse_entry(entry))
-                .collect();
+            self.rows = Arc::new(
+                connection_log
+                    .iter()
+                    .rev()
+                    .map(|entry| parse_entry(entry))
+                    .collect(),
+            );
             self.cached_revision = revision;
         }
+        let rows = self.rows.clone();
         let mono = theme.mono_font_family.clone();
-        let mut body = TableBody::new();
-        if self.rows.is_empty() {
-            body = body.child(
-                TableRow::new().child(
-                    TableCell::new()
-                        .col_span(6)
-                        .text_color(theme.muted_foreground)
-                        .child("No connection events recorded yet."),
-                ),
-            );
+        let muted = theme.muted_foreground;
+        let danger = theme.danger;
+        let body = if rows.is_empty() {
+            div()
+                .flex_1()
+                .items_center()
+                .justify_center()
+                .text_sm()
+                .text_color(muted)
+                .child("No connection events recorded yet.")
+                .into_any_element()
         } else {
-            for row in &self.rows {
-                let status_color = row.status_color(theme.muted_foreground, theme.danger);
-                body = body.child(
-                    TableRow::new()
-                        .child(
-                            TableCell::new()
-                                .w(DATE_COLUMN_WIDTH)
-                                .text_sm()
-                                .font_family(mono.clone())
-                                .child(row.date.clone()),
-                        )
-                        .child(
-                            TableCell::new()
-                                .w(ID_COLUMN_WIDTH)
-                                .text_sm()
-                                .font_family(mono.clone())
-                                .child(row.id.clone()),
-                        )
-                        .child(
-                            TableCell::new()
-                                .w(METHOD_COLUMN_WIDTH)
-                                .text_sm()
-                                .font_family(mono.clone())
-                                .child(row.method.clone()),
-                        )
-                        .child(
-                            TableCell::new()
-                                .flex_1()
-                                .text_sm()
-                                .font_family(mono.clone())
-                                .overflow_hidden()
-                                .child(row.path.clone()),
-                        )
-                        .child(
-                            TableCell::new()
-                                .w(STATUS_COLUMN_WIDTH)
-                                .text_sm()
-                                .font_family(mono.clone())
-                                .text_color(status_color)
-                                .child(row.status.clone()),
-                        )
-                        .child(
-                            TableCell::new()
-                                .w(DURATION_COLUMN_WIDTH)
-                                .text_sm()
-                                .font_family(mono.clone())
-                                .child(row.duration.clone()),
-                        ),
-                );
-            }
-        }
-        let entries = Table::new()
-            .small()
-            .accessibility_label("Connection events")
+            uniform_list("connection-log-rows", rows.len(), move |range, _, _| {
+                range
+                    .map(|index| {
+                        let row = &rows[index];
+                        let cell_ix = index * 6;
+                        let status_color = row.status_color(muted, danger);
+                        TableRow::new()
+                            .small()
+                            .with_ix(index)
+                            .child(
+                                TableCell::new()
+                                    .with_ix(cell_ix)
+                                    .w(DATE_COLUMN_WIDTH)
+                                    .text_sm()
+                                    .font_family(mono.clone())
+                                    .child(row.date.clone()),
+                            )
+                            .child(
+                                TableCell::new()
+                                    .with_ix(cell_ix + 1)
+                                    .w(ID_COLUMN_WIDTH)
+                                    .text_sm()
+                                    .font_family(mono.clone())
+                                    .child(row.id.clone()),
+                            )
+                            .child(
+                                TableCell::new()
+                                    .with_ix(cell_ix + 2)
+                                    .w(METHOD_COLUMN_WIDTH)
+                                    .text_sm()
+                                    .font_family(mono.clone())
+                                    .child(row.method.clone()),
+                            )
+                            .child(
+                                TableCell::new()
+                                    .with_ix(cell_ix + 3)
+                                    .flex_1()
+                                    .text_sm()
+                                    .font_family(mono.clone())
+                                    .text_ellipsis()
+                                    .child(row.path.clone()),
+                            )
+                            .child(
+                                TableCell::new()
+                                    .with_ix(cell_ix + 4)
+                                    .w(STATUS_COLUMN_WIDTH)
+                                    .text_sm()
+                                    .font_family(mono.clone())
+                                    .text_color(status_color)
+                                    .child(row.status.clone()),
+                            )
+                            .child(
+                                TableCell::new()
+                                    .with_ix(cell_ix + 5)
+                                    .w(DURATION_COLUMN_WIDTH)
+                                    .text_sm()
+                                    .font_family(mono.clone())
+                                    .child(row.duration.clone()),
+                            )
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .track_scroll(&self.scroll_handle)
+            .flex_1()
+            .min_h(px(0.))
+            .into_any_element()
+        };
+        let entries = div()
+            .v_flex()
+            .flex_1()
+            .min_h(px(0.))
             .child(
-                TableHeader::new().child(
-                    TableRow::new()
-                        .child(TableHead::new().w(DATE_COLUMN_WIDTH).child("Date"))
-                        .child(TableHead::new().w(ID_COLUMN_WIDTH).child("#"))
-                        .child(TableHead::new().w(METHOD_COLUMN_WIDTH).child("Method"))
-                        .child(TableHead::new().flex_1().child("Path"))
-                        .child(TableHead::new().w(STATUS_COLUMN_WIDTH).child("Response"))
-                        .child(TableHead::new().w(DURATION_COLUMN_WIDTH).child("Time")),
-                ),
+                Table::new()
+                    .small()
+                    .accessibility_label("Connection events")
+                    .child(
+                        TableHeader::new().small().child(
+                            TableRow::new()
+                                .child(TableHead::new().w(DATE_COLUMN_WIDTH).child("Date"))
+                                .child(TableHead::new().w(ID_COLUMN_WIDTH).child("#"))
+                                .child(TableHead::new().w(METHOD_COLUMN_WIDTH).child("Method"))
+                                .child(TableHead::new().flex_1().child("Path"))
+                                .child(TableHead::new().w(STATUS_COLUMN_WIDTH).child("Response"))
+                                .child(TableHead::new().w(DURATION_COLUMN_WIDTH).child("Time")),
+                        ),
+                    ),
             )
             .child(body);
         div()
@@ -151,7 +180,7 @@ impl Render for ConnectionLogView {
                 div()
                     .v_flex()
                     .flex_1()
-                    .overflow_y_scrollbar()
+                    .min_h(px(0.))
                     .p_4()
                     .gap_3()
                     .child(div().text_lg().child("Connection log"))
