@@ -3,7 +3,7 @@ use crate::{
     storage::credentials,
     sunsynk::SunsynkClient,
 };
-use futures_util::future::{select, Either};
+use futures_util::future::{join, select, Either};
 use gpui_kit::*;
 use std::sync::atomic::Ordering;
 
@@ -105,12 +105,26 @@ impl MonitorController {
                     .find(|inverter| &inverter.serial == serial)
                     .and_then(|inverter| inverter.plant_id)
             });
-            let plant_data = match (selected.as_deref(), selected_plant_id) {
-                (Some(serial), Some(plant_id)) => {
-                    Some(client.refresh_plant(plant_id, serial, true).await?)
-                }
-                _ => None,
+            let notification_client = client.clone();
+            let count_future = async move {
+                tokio::time::timeout(
+                    std::time::Duration::from_secs(5),
+                    notification_client.notification_count(),
+                )
+                .await
+                .ok()
+                .and_then(Result::ok)
             };
+            let refresh_future = async {
+                match (selected.as_deref(), selected_plant_id) {
+                    (Some(serial), Some(plant_id)) => {
+                        client.refresh_plant(plant_id, serial, true).await.map(Some)
+                    }
+                    _ => Ok(None),
+                }
+            };
+            let (plant_data, notification_count) = join(refresh_future, count_future).await;
+            let plant_data = plant_data?;
             let (snapshot, history) = plant_data
                 .map(|(snapshot, history)| (Some(snapshot), history))
                 .unwrap_or((None, None));
@@ -124,6 +138,7 @@ impl MonitorController {
                 client.refresh_token(),
                 client.auth_state(),
                 history,
+                notification_count,
             ))
         };
         let task_sender = sender.clone();
@@ -135,17 +150,24 @@ impl MonitorController {
             };
             let _ = task_sender
                 .send(match result {
-                    Ok((inverters, snapshot, selected, refresh_token, auth, history)) => {
-                        ConnectResult::Connected {
-                            generation,
-                            inverters,
-                            snapshot,
-                            selected_serial: selected,
-                            refresh_token,
-                            auth,
-                            history,
-                        }
-                    }
+                    Ok((
+                        inverters,
+                        snapshot,
+                        selected,
+                        refresh_token,
+                        auth,
+                        history,
+                        notification_count,
+                    )) => ConnectResult::Connected {
+                        generation,
+                        inverters,
+                        snapshot,
+                        selected_serial: selected,
+                        refresh_token,
+                        notification_count,
+                        auth,
+                        history,
+                    },
                     Err(error) => ConnectResult::Failure {
                         generation,
                         error: error.to_string(),
@@ -174,6 +196,7 @@ impl MonitorController {
                             snapshot,
                             selected_serial: selected,
                             refresh_token,
+                            notification_count,
                             auth,
                             history,
                         } => {
@@ -187,6 +210,7 @@ impl MonitorController {
                             dashboard.inverters = inverters;
                             dashboard.refresh_token = refresh_token.clone();
                             dashboard.auth_state = Some(auth);
+                            dashboard.notification_count = notification_count;
                             if let Some((email, password)) = dashboard.credentials.clone() {
                                 credentials::save_async(
                                     email,
@@ -224,6 +248,7 @@ impl MonitorController {
                             }
                         }
                         ConnectResult::PollStarted => {}
+                        ConnectResult::NotificationCount { .. } => {}
                         ConnectResult::Progress {
                             generation,
                             message,

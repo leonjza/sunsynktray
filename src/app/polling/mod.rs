@@ -221,6 +221,10 @@ impl MonitorController {
                             } => {
                                 controller.apply_snapshot(snapshot, refresh_token, history, cx);
                             }
+                            ConnectResult::NotificationCount { count } => {
+                                controller.notification_count = Some(count);
+                                cx.notify();
+                            }
                             ConnectResult::BackfillProgress {
                                 completed,
                                 total,

@@ -1,4 +1,5 @@
 use crate::{
+    app::MonitorController,
     app::MonitorState,
     app::{ConnectionState, Dashboard, HistorySource},
     domain::InverterSummary,
@@ -9,6 +10,7 @@ use crate::{
     },
 };
 use gpui_kit::component::{
+    badge::Badge,
     button::{Button, ButtonVariants},
     date_picker::{DatePicker, DatePickerState},
     scroll::ScrollableElement,
@@ -31,6 +33,9 @@ pub(crate) fn render(
     chart_bounds: Arc<Mutex<Option<Bounds<Pixels>>>>,
     selected_inverter: Option<&InverterSummary>,
     entity: Entity<Dashboard>,
+    controller: Entity<MonitorController>,
+    notification_count: Option<u64>,
+    notification_window: Arc<Mutex<Option<AnyWindowHandle>>>,
     compact_view: bool,
 ) -> AnyElement {
     if matches!(connection, ConnectionState::Connecting) {
@@ -46,6 +51,10 @@ pub(crate) fn render(
     let snapshot = &data.snapshot;
     let live = matches!(connection, ConnectionState::Connected);
     let refresh_entity = entity.clone();
+    let notification_controller = controller;
+    let notification_window_handle = notification_window;
+    let unread_count = notification_count.unwrap_or(0);
+    let notification_tooltip = format!("Notifications · {unread_count} unread");
     let identity = selected_inverter.map(|inverter| {
         let name = if !inverter.alias.is_empty() && inverter.alias != inverter.serial {
             inverter.alias.clone()
@@ -117,6 +126,23 @@ pub(crate) fn render(
                                     .text_sm()
                                     .child(format_energy(snapshot.solar_yield_kwh)),
                             ),
+                    )
+                    .child(
+                        Badge::new().count(unread_count as usize).small().child(
+                            Button::new("notification-center")
+                                .icon(IconName::Bell)
+                                .accessibility_label("Open notification centre")
+                                .tooltip(notification_tooltip)
+                                .ghost()
+                                .xsmall()
+                                .on_click(move |_, _, cx| {
+                                    crate::app::open_notification_center_window(
+                                        cx,
+                                        notification_controller.clone(),
+                                        notification_window_handle.clone(),
+                                    );
+                                }),
+                        ),
                     )
                     .child(
                         Button::new("refresh")

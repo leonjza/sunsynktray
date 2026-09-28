@@ -155,3 +155,58 @@ pub(crate) fn open_api_inspector_window(
         .lock()
         .unwrap_or_else(|error| error.into_inner()) = Some(handle);
 }
+
+pub(crate) fn open_notification_center_window(
+    cx: &mut App,
+    controller: Entity<MonitorController>,
+    window_handle: Arc<Mutex<Option<AnyWindowHandle>>>,
+) {
+    if let Some(handle) = window_handle
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .as_ref()
+        .copied()
+    {
+        if handle
+            .update(cx, |_, window, _| window.activate_window())
+            .is_ok()
+        {
+            return;
+        }
+        *window_handle
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = None;
+    }
+    let bounds = Bounds::centered(None, size(px(1060.), px(700.)), cx);
+    let (handle, _) = match gpui_kit::open_window(
+        WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(bounds)),
+            titlebar: Some(gpui_kit::component::TitleBar::title_bar_options()),
+            is_resizable: true,
+            focus: true,
+            show: true,
+            window_min_size: Some(size(px(800.), px(500.))),
+            ..Default::default()
+        },
+        cx,
+        |window, cx| {
+            let window_handle = window_handle.clone();
+            window.on_window_should_close(cx, move |_, _| {
+                *window_handle
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner()) = None;
+                true
+            });
+            cx.new(|cx| crate::ui::notification_center::NotificationCenterView::new(controller, cx))
+        },
+    ) {
+        Ok(handle) => handle,
+        Err(error) => {
+            tracing::error!(%error, "failed to open notification center window");
+            return;
+        }
+    };
+    *window_handle
+        .lock()
+        .unwrap_or_else(|error| error.into_inner()) = Some(handle);
+}

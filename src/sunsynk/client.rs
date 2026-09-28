@@ -137,6 +137,64 @@ impl SunsynkClient {
         }
     }
 
+    pub(crate) async fn post(
+        &self,
+        path: &str,
+        params: Option<&[(&str, String)]>,
+        json: Option<&Value>,
+    ) -> Result<Value> {
+        self.ensure_authenticated().await?;
+        let mut response = match self.request("POST", path, params, json).await {
+            Err(error)
+                if error
+                    .chain()
+                    .any(|cause| cause.downcast_ref::<AuthenticationExpired>().is_some()) =>
+            {
+                self.auth
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .access_token = None;
+                self.ensure_authenticated()
+                    .await
+                    .with_context(|| format!("re-authenticating before POST {path}"))?;
+                self.request("POST", path, params, json)
+                    .await
+                    .with_context(|| format!("retrying POST {path}"))?
+            }
+            result => result.with_context(|| format!("POST {path}"))?,
+        };
+        if response_indicates_expired(&response) {
+            self.auth
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .access_token = None;
+            self.ensure_authenticated()
+                .await
+                .with_context(|| format!("re-authenticating before POST {path}"))?;
+            response = self
+                .request("POST", path, params, json)
+                .await
+                .with_context(|| format!("retrying POST {path}"))?;
+            if response_indicates_expired(&response) {
+                return Err(anyhow!(AuthenticationExpired))
+                    .with_context(|| format!("retrying POST {path}"));
+            }
+        }
+        if response.get("success").and_then(Value::as_bool) == Some(false)
+            || response
+                .get("code")
+                .and_then(Value::as_i64)
+                .is_some_and(|code| code != 0)
+        {
+            let message = response
+                .get("msg")
+                .and_then(Value::as_str)
+                .unwrap_or("SunSynk API request failed");
+            bail!("POST {path}: {message}");
+        }
+        Ok(response)
+    }
+
     pub(crate) async fn get_authenticated(
         &self,
         path: &str,

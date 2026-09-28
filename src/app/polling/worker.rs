@@ -1,7 +1,7 @@
 use super::protocol::{Command, PollConfig, PollResult};
 use crate::sunsynk::SunsynkClient;
 use anyhow::anyhow;
-use futures_util::future::{select, Either};
+use futures_util::future::{join, select, Either};
 use std::{
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -25,6 +25,7 @@ struct LiveTaskResult {
         crate::domain::EnergySnapshot,
         Option<Vec<crate::domain::HistorySeries>>,
     )>,
+    notification_count: Option<u64>,
     refresh_token: Option<String>,
 }
 
@@ -209,14 +210,27 @@ async fn run(
             if let Some(task) = live_task.take() {
                 let LiveTaskResult {
                     result,
+                    notification_count,
                     refresh_token,
                 } = match task.await {
                     Ok(result) => result,
                     Err(error) => LiveTaskResult {
                         result: Err(anyhow!("live refresh task failed: {error}")),
+                        notification_count: None,
                         refresh_token: None,
                     },
                 };
+                if let Some(count) = notification_count {
+                    if !send_cancellable(
+                        &sender,
+                        PollResult::NotificationCount { count },
+                        &mut cancel_receiver,
+                    )
+                    .await
+                    {
+                        break;
+                    }
+                }
                 let succeeded = result.is_ok();
                 let retry_in = next_retry_delay(succeeded, interval, retry_delay);
                 let result = result
@@ -443,6 +457,40 @@ async fn run(
                     .await
                     .map_err(|error| error.to_string());
                 let _ = response.send(result);
+            }
+            Some(Ok(Some(Command::FetchNotifications { response }))) => {
+                let notification_client = client.clone();
+                tokio::spawn(async move {
+                    let result = match tokio::time::timeout(
+                        Duration::from_secs(20),
+                        notification_client.notifications(100, 0, "en"),
+                    )
+                    .await
+                    {
+                        Ok(result) => result.map_err(|error| error.to_string()),
+                        Err(_) => Err("Loading notifications timed out.".into()),
+                    };
+                    let _ = response.send(result);
+                });
+            }
+            Some(Ok(Some(Command::MarkNotificationRead {
+                id,
+                notice_type,
+                response,
+            }))) => {
+                let notification_client = client.clone();
+                tokio::spawn(async move {
+                    let result = match tokio::time::timeout(
+                        Duration::from_secs(20),
+                        notification_client.mark_notification_read(&id, notice_type),
+                    )
+                    .await
+                    {
+                        Ok(result) => result.map_err(|error| error.to_string()),
+                        Err(_) => Err("Marking the notification as read timed out.".into()),
+                    };
+                    let _ = response.send(result);
+                });
             }
             Some(Ok(Some(Command::Stop))) => {
                 backfill_cancel_epoch.fetch_add(1, Ordering::Release);
@@ -720,19 +768,35 @@ async fn run(
                 break;
             }
             let live_client = client.clone();
+            let notification_client = client.clone();
             let live_serial = serial.clone();
             let include_today_history = Instant::now() >= next_today_history_at;
             live_task = Some(tokio::spawn(async move {
-                let result = match plant_id {
-                    Some(plant_id) => {
-                        live_client
-                            .refresh_plant(plant_id, &live_serial, include_today_history)
-                            .await
-                    }
-                    None => Err(anyhow!("selected inverter has no plant")),
-                };
+                let (result, notification_count) = join(
+                    async {
+                        match plant_id {
+                            Some(plant_id) => {
+                                live_client
+                                    .refresh_plant(plant_id, &live_serial, include_today_history)
+                                    .await
+                            }
+                            None => Err(anyhow!("selected inverter has no plant")),
+                        }
+                    },
+                    async {
+                        tokio::time::timeout(
+                            Duration::from_secs(5),
+                            notification_client.notification_count(),
+                        )
+                        .await
+                        .ok()
+                        .and_then(Result::ok)
+                    },
+                )
+                .await;
                 LiveTaskResult {
                     result,
+                    notification_count,
                     refresh_token: live_client.refresh_token(),
                 }
             }));

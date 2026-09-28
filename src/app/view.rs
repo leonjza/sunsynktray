@@ -119,6 +119,9 @@ impl Render for Dashboard {
                         Some(&inverter.serial) == controller.selected_serial.as_ref()
                     }),
                     entity.clone(),
+                    self.controller.clone(),
+                    controller.notification_count,
+                    self.notification_window.clone(),
                     self.compact_view,
                 ),
                 Screen::Settings => settings_view::render(SettingsView {

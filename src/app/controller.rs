@@ -29,6 +29,7 @@ pub(crate) struct MonitorController {
     pub(crate) selected_serial: Option<String>,
     pub(crate) credentials: Option<(String, String)>,
     pub(crate) refresh_token: Option<String>,
+    pub(crate) notification_count: Option<u64>,
     pub(crate) auth_state: Option<std::sync::Arc<std::sync::Mutex<crate::sunsynk::AuthState>>>,
     pub(crate) refresh_seconds: u64,
     pub(crate) history_days: u64,
@@ -80,6 +81,7 @@ impl MonitorController {
             selected_serial: None,
             credentials: None,
             refresh_token: None,
+            notification_count: None,
             auth_state: None,
             refresh_seconds: 60,
             history_days: 365,
@@ -142,6 +144,63 @@ impl MonitorController {
             }
         }
         response_receiver
+    }
+
+    pub(crate) fn fetch_notifications(
+        &self,
+    ) -> tokio::sync::oneshot::Receiver<Result<Vec<crate::domain::NotificationMessage>, String>>
+    {
+        let (response, receiver) = tokio::sync::oneshot::channel();
+        let Some(sender) = self.poll_sender.as_ref() else {
+            let _ = response.send(Err(
+                "Connect an account before loading notifications.".into()
+            ));
+            return receiver;
+        };
+        if let Err(error) = sender.try_send(PollCommand::FetchNotifications { response }) {
+            let (command, message) = match error {
+                tokio::sync::mpsc::error::TrySendError::Full(command) => {
+                    (command, "The API request queue is busy. Try again shortly.")
+                }
+                tokio::sync::mpsc::error::TrySendError::Closed(command) => {
+                    (command, "The authenticated API session has stopped.")
+                }
+            };
+            if let PollCommand::FetchNotifications { response } = command {
+                let _ = response.send(Err(message.into()));
+            }
+        }
+        receiver
+    }
+
+    pub(crate) fn mark_notification_read(
+        &self,
+        id: String,
+        notice_type: i64,
+    ) -> tokio::sync::oneshot::Receiver<Result<(), String>> {
+        let (response, receiver) = tokio::sync::oneshot::channel();
+        let Some(sender) = self.poll_sender.as_ref() else {
+            let _ = response.send(Err("The authenticated API session is unavailable.".into()));
+            return receiver;
+        };
+        if let Err(error) = sender.try_send(PollCommand::MarkNotificationRead {
+            id,
+            notice_type,
+            response,
+        }) {
+            let (command, message) = match error {
+                tokio::sync::mpsc::error::TrySendError::Full(command) => {
+                    (command, "The API request queue is busy. Try again shortly.")
+                }
+                tokio::sync::mpsc::error::TrySendError::Closed(command) => {
+                    (command, "The authenticated API session has stopped.")
+                }
+            };
+            if let PollCommand::MarkNotificationRead { response, .. } = command {
+                let _ = response.send(Err(message.into()));
+            }
+        }
+        receiver
     }
 
     pub(crate) fn record_connection_event(&mut self, message: impl Into<String>) {

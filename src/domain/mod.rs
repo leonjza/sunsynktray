@@ -48,3 +48,26 @@ pub(crate) struct InverterSummary {
     pub(crate) plant_name: String,
     pub(crate) status: i64,
 }
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct NotificationMessage {
+    #[serde(default)]
+    pub(crate) id: String,
+    #[serde(default)]
+    pub(crate) sn: String,
+    #[serde(rename = "type")]
+    pub(crate) notice_type: Option<i64>,
+    pub(crate) status: Option<i64>,
+    #[serde(rename = "messageType")]
+    pub(crate) message_type: Option<i64>,
+    pub(crate) time: Option<i64>,
+    pub(crate) create_at: Option<String>,
+    pub(crate) update_at: Option<String>,
+    pub(crate) station_name: Option<String>,
+    pub(crate) soc: Option<f64>,
+    pub(crate) description: Option<String>,
+    #[serde(rename = "noticeTittle")]
+    pub(crate) notice_title: Option<String>,
+    pub(crate) notice_description: Option<String>,
+}

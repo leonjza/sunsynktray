@@ -29,7 +29,10 @@ pub(crate) use state::{
     ConnectionState, HistoryPointIndex, HistorySnapshot, HistorySource, MonitorState,
     MonitorStateGlobal, Screen, TrayMetric,
 };
-pub(crate) use window::{open_api_inspector_window, open_connection_log_window, open_main_window};
+pub(crate) use window::{
+    open_api_inspector_window, open_connection_log_window, open_main_window,
+    open_notification_center_window,
+};
 
 pub(crate) struct Dashboard {
     state: Arc<MonitorState>,
@@ -48,6 +51,7 @@ pub(crate) struct Dashboard {
     startup_enabled: bool,
     startup_pending: bool,
     startup_generation: u64,
+    notification_window: Arc<Mutex<Option<AnyWindowHandle>>>,
     startup_error: Option<String>,
     refresh_interval_error: Option<String>,
     credentials_synced: bool,
@@ -105,6 +109,7 @@ impl Dashboard {
             startup_pending: true,
             startup_error: None,
             startup_generation: 0,
+            notification_window: Arc::new(Mutex::new(None)),
             refresh_interval_error: None,
             credentials_synced: false,
             history_days_generation: history_days_generation.clone(),

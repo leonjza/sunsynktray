@@ -1,8 +1,8 @@
 use super::{
     client::response_indicates_expired, error::AuthenticationExpired, parsing::*, SunsynkClient,
 };
-use crate::domain::{EnergySnapshot, HistorySeries, InverterSummary};
-use anyhow::{anyhow, bail, Result};
+use crate::domain::{EnergySnapshot, HistorySeries, InverterSummary, NotificationMessage};
+use anyhow::{anyhow, bail, Context, Result};
 use futures_util::future::join4;
 use serde_json::Value;
 
@@ -60,6 +60,49 @@ impl SunsynkClient {
             page += 1;
         }
         Ok(result)
+    }
+
+    pub(crate) async fn notification_count(&self) -> Result<u64> {
+        let response = self.get("/api/v1/messageTd/count", None).await?;
+        response
+            .get("data")
+            .and_then(Value::as_u64)
+            .context("SunSynk notification count response had no numeric data")
+    }
+
+    pub(crate) async fn notifications(
+        &self,
+        page_size: u64,
+        page_number: u64,
+        language: &str,
+    ) -> Result<Vec<NotificationMessage>> {
+        let path = "/api/v1/messageTd/messages";
+        let params = [
+            ("pageSize", page_size.to_string()),
+            ("pageNumber", page_number.to_string()),
+            ("status", String::new()),
+            ("lan", language.to_owned()),
+        ];
+        let response = self.get(path, Some(&params)).await?;
+        let records = response
+            .get("data")
+            .and_then(|data| data.get("infos"))
+            .and_then(|infos| infos.get("records"))
+            .and_then(Value::as_array)
+            .context("SunSynk notification response did not contain data.infos.records")?;
+        records
+            .iter()
+            .cloned()
+            .map(serde_json::from_value)
+            .collect::<Result<Vec<_>, _>>()
+            .context("could not parse SunSynk notification records")
+    }
+
+    pub(crate) async fn mark_notification_read(&self, id: &str, notice_type: i64) -> Result<()> {
+        let params = [("id", id.to_owned()), ("type", notice_type.to_string())];
+        self.post("/api/v1/messageTd/readMessage", Some(&params), None)
+            .await?;
+        Ok(())
     }
 
     pub(crate) async fn refresh_plant(

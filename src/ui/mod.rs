@@ -9,6 +9,7 @@ pub(crate) mod connection_log;
 pub(crate) mod dashboard;
 pub(crate) mod format;
 pub(crate) mod history_chart;
+pub(crate) mod notification_center;
 pub(crate) mod power_flow;
 pub(crate) mod power_state;
 pub(crate) mod settings;

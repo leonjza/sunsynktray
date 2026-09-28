@@ -7,6 +7,7 @@ pub(crate) enum PollResult {
         snapshot: Option<EnergySnapshot>,
         selected_serial: Option<String>,
         refresh_token: Option<String>,
+        notification_count: Option<u64>,
         auth: std::sync::Arc<std::sync::Mutex<crate::sunsynk::AuthState>>,
         history: Option<Vec<HistorySeries>>,
     },
@@ -27,6 +28,9 @@ pub(crate) enum PollResult {
         snapshot: EnergySnapshot,
         refresh_token: Option<String>,
         history: Option<Vec<HistorySeries>>,
+    },
+    NotificationCount {
+        count: u64,
     },
     BackfillProgress {
         completed: u64,
@@ -51,6 +55,15 @@ pub(crate) enum Command {
         path: String,
         params: Vec<(String, String)>,
         response: tokio::sync::oneshot::Sender<Result<(u16, serde_json::Value), String>>,
+    },
+    FetchNotifications {
+        response:
+            tokio::sync::oneshot::Sender<Result<Vec<crate::domain::NotificationMessage>, String>>,
+    },
+    MarkNotificationRead {
+        id: String,
+        notice_type: i64,
+        response: tokio::sync::oneshot::Sender<Result<(), String>>,
     },
     Stop,
     Select(String, Option<i64>),
