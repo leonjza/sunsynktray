@@ -58,6 +58,9 @@ pub(super) fn snapshot_from_flow(flow: &Map<String, Value>, serial: &str) -> Ene
         to_battery: flag(flow, "toBat"),
         battery_to: flag(flow, "batTo"),
         grid_to: flag(flow, "gridTo"),
+        grid_connected: None,
+        grid_voltage: None,
+        grid_frequency: None,
     }
 }
 

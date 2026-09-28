@@ -29,7 +29,7 @@ pub(crate) use state::{
     ConnectionState, HistoryPointIndex, HistorySnapshot, HistorySource, MonitorState,
     MonitorStateGlobal, Screen, TrayMetric,
 };
-pub(crate) use window::{open_connection_log_window, open_main_window};
+pub(crate) use window::{open_api_inspector_window, open_connection_log_window, open_main_window};
 
 pub(crate) struct Dashboard {
     state: Arc<MonitorState>,

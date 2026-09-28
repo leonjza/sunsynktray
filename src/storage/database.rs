@@ -463,7 +463,7 @@ fn load_snapshot(connection: &Connection, email: &str) -> rusqlite::Result<Optio
     let Some(id) = id else {
         return Ok(None);
     };
-    connection.query_row("SELECT inverter_sn,pv_watts,load_watts,grid_watts,battery_watts,battery_soc,solar_yield_kwh,updated_at,pv_to,to_load,to_grid,to_battery,battery_to,grid_to FROM latest_snapshots WHERE account_id=?1 ORDER BY observed_at DESC LIMIT 1", [id], |row| Ok(EnergySnapshot { inverter_sn: row.get(0)?, pv_watts: row.get(1)?, load_watts: row.get(2)?, grid_watts: row.get(3)?, battery_watts: row.get(4)?, battery_soc: row.get(5)?, solar_yield_kwh: row.get(6)?, updated_at: row.get(7)?, pv_to: row.get(8)?, to_load: row.get(9)?, to_grid: row.get(10)?, to_battery: row.get(11)?, battery_to: row.get(12)?, grid_to: row.get(13)? })).optional()
+    connection.query_row("SELECT inverter_sn,pv_watts,load_watts,grid_watts,battery_watts,battery_soc,solar_yield_kwh,updated_at,pv_to,to_load,to_grid,to_battery,battery_to,grid_to FROM latest_snapshots WHERE account_id=?1 ORDER BY observed_at DESC LIMIT 1", [id], |row| Ok(EnergySnapshot { inverter_sn: row.get(0)?, pv_watts: row.get(1)?, load_watts: row.get(2)?, grid_watts: row.get(3)?, battery_watts: row.get(4)?, battery_soc: row.get(5)?, solar_yield_kwh: row.get(6)?, updated_at: row.get(7)?, pv_to: row.get(8)?, to_load: row.get(9)?, to_grid: row.get(10)?, to_battery: row.get(11)?, battery_to: row.get(12)?, grid_to: row.get(13)?, grid_connected: None, grid_voltage: None, grid_frequency: None })).optional()
 }
 
 fn save_history(

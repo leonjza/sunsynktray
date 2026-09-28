@@ -429,6 +429,21 @@ async fn run(
                 // Make the scheduled-refresh path pick this up immediately.
                 next_refresh_at = Instant::now();
             }
+            Some(Ok(Some(Command::InspectEndpoint {
+                path,
+                params,
+                response,
+            }))) => {
+                let params = params
+                    .iter()
+                    .map(|(key, value)| (key.as_str(), value.clone()))
+                    .collect::<Vec<_>>();
+                let result = client
+                    .inspect_endpoint(&path, Some(&params))
+                    .await
+                    .map_err(|error| error.to_string());
+                let _ = response.send(result);
+            }
             Some(Ok(Some(Command::Stop))) => {
                 backfill_cancel_epoch.fetch_add(1, Ordering::Release);
                 if let Some(task) = backfill_task.take() {

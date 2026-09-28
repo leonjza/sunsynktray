@@ -12,6 +12,7 @@ use std::sync::{Arc, Mutex};
 pub(crate) struct StatusBar {
     controller: Entity<MonitorController>,
     connection_log_window: Arc<Mutex<Option<AnyWindowHandle>>>,
+    api_inspector_window: Arc<Mutex<Option<AnyWindowHandle>>>,
     screen: Screen,
     activity: String,
     fetching: bool,
@@ -32,6 +33,7 @@ impl Render for StatusBar {
             self.next_refresh_in,
             self.controller.clone(),
             self.connection_log_window.clone(),
+            self.api_inspector_window.clone(),
             self.compact_view,
         )
     }
@@ -42,6 +44,7 @@ impl StatusBar {
         Self {
             controller,
             connection_log_window: Arc::new(Mutex::new(None)),
+            api_inspector_window: Arc::new(Mutex::new(None)),
             screen: Screen::Dashboard,
             activity: "Starting…".into(),
             fetching: false,
@@ -171,6 +174,7 @@ fn render_status_bar(
     next_refresh_in: Option<u64>,
     controller: Entity<MonitorController>,
     connection_log_window: Arc<Mutex<Option<AnyWindowHandle>>>,
+    api_inspector_window: Arc<Mutex<Option<AnyWindowHandle>>>,
     compact_view: bool,
 ) -> impl IntoElement {
     let show_activity = screen == Screen::Dashboard
@@ -201,6 +205,7 @@ fn render_status_bar(
         })
         .when(!compact_view, |element| element.child(activity))
         .into_any_element();
+    let connection_log_controller = controller.clone();
     let connection_log = Button::new("connection-log")
         .icon(IconName::FileText)
         .accessibility_label("Open connection log")
@@ -210,13 +215,28 @@ fn render_status_bar(
         .on_click(move |_, _, cx| {
             crate::app::open_connection_log_window(
                 cx,
-                controller.clone(),
+                connection_log_controller.clone(),
                 connection_log_window.clone(),
+            );
+        });
+    let api_inspector_controller = controller;
+    let api_inspector = Button::new("api-inspector")
+        .icon(IconName::Inspector)
+        .accessibility_label("Open API inspector")
+        .tooltip("API inspector")
+        .ghost()
+        .xsmall()
+        .on_click(move |_, _, cx| {
+            crate::app::open_api_inspector_window(
+                cx,
+                api_inspector_controller.clone(),
+                api_inspector_window.clone(),
             );
         });
     KitStatusBar::new()
         .left(activity_content)
         .right(connection_log)
+        .right(api_inspector)
         .right(format!("v{}", env!("CARGO_PKG_VERSION")))
         .into_any_element()
 }

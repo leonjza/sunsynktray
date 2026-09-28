@@ -47,6 +47,11 @@ pub(crate) enum PollResult {
 
 pub(crate) enum Command {
     Refresh,
+    InspectEndpoint {
+        path: String,
+        params: Vec<(String, String)>,
+        response: tokio::sync::oneshot::Sender<Result<(u16, serde_json::Value), String>>,
+    },
     Stop,
     Select(String, Option<i64>),
     HistoryDate(chrono::NaiveDate),

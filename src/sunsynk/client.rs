@@ -174,6 +174,20 @@ impl SunsynkClient {
         params: Option<&[(&str, String)]>,
         json: Option<&Value>,
     ) -> Result<Value> {
+        let (status, value) = self.request_with_status(method, path, params, json).await?;
+        if !(200..300).contains(&status) {
+            bail!("SunSynk returned HTTP {status} for {method} {path}");
+        }
+        Ok(value)
+    }
+
+    pub(crate) async fn request_with_status(
+        &self,
+        method: &str,
+        path: &str,
+        params: Option<&[(&str, String)]>,
+        json: Option<&Value>,
+    ) -> Result<(u16, Value)> {
         let request_id = REQUEST_ID.fetch_add(1, Ordering::Relaxed);
         let started = Instant::now();
         const MAX_REQUEST_DURATION: Duration = Duration::from_secs(60);
@@ -252,9 +266,6 @@ impl SunsynkClient {
                     started.elapsed().as_millis()
                 ));
             }
-            let response = response
-                .error_for_status()
-                .with_context(|| format!("SunSynk returned an HTTP error for {method} {path}"))?;
             let body: Value = match response.json().await {
                 Ok(body) => body,
                 Err(error) => {
@@ -266,12 +277,13 @@ impl SunsynkClient {
                         .with_context(|| format!("decoding SunSynk response for {method} {path}"));
                 }
             };
-            self.log_request(format!(
-                "#{request_id} {method} {path} succeeded with {} after {}ms",
-                status,
-                started.elapsed().as_millis()
-            ));
-            return Ok(body);
+            if status.is_success() {
+                self.log_request(format!(
+                    "#{request_id} {method} {path} succeeded with {status} after {}ms",
+                    started.elapsed().as_millis()
+                ));
+            }
+            return Ok((status.as_u16(), body));
         }
         unreachable!("bounded HTTP retry loop must return")
     }
@@ -307,7 +319,7 @@ fn parse_retry_after(value: &str) -> Option<u64> {
     Some(seconds.max(0) as u64)
 }
 
-fn response_indicates_expired(response: &Value) -> bool {
+pub(crate) fn response_indicates_expired(response: &Value) -> bool {
     let message = response
         .get("msg")
         .or_else(|| response.get("message"))

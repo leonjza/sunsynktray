@@ -61,41 +61,41 @@ pub(crate) fn run(args: &[String], settings: Settings) -> Result<()> {
         let mut responses = BTreeMap::new();
         if let Some(plant_id) = plant_id {
             let date = Utc::now().date_naive().to_string();
-            responses.insert(
-                "plant_realtime".into(),
-                client
-                    .inspect_endpoint(
-                        &format!("/api/v1/plant/{plant_id}/realtime"),
-                        Some(&[("id", plant_id.to_string())]),
-                    )
-                    .await?,
-            );
+            let response = client
+                .inspect_endpoint(
+                    &format!("/api/v1/plant/{plant_id}/realtime"),
+                    Some(&[("id", plant_id.to_string())]),
+                )
+                .await?;
+            responses.insert("plant_realtime".into(), require_success_response(response)?);
             for days_ago in [1_i64, 7, 30] {
                 let history_date = (Utc::now() - chrono::Duration::days(days_ago))
                     .date_naive()
                     .to_string();
+                let response = client
+                    .inspect_endpoint(
+                        &format!("/api/v1/plant/energy/{plant_id}/day"),
+                        Some(&[
+                            ("lan", "en".into()),
+                            ("date", history_date),
+                            ("id", plant_id.to_string()),
+                        ]),
+                    )
+                    .await?;
                 responses.insert(
                     format!("plant_energy_day_{days_ago}d"),
-                    client
-                        .inspect_endpoint(
-                            &format!("/api/v1/plant/energy/{plant_id}/day"),
-                            Some(&[
-                                ("lan", "en".into()),
-                                ("date", history_date),
-                                ("id", plant_id.to_string()),
-                            ]),
-                        )
-                        .await?,
+                    require_success_response(response)?,
                 );
             }
+            let response = client
+                .inspect_endpoint(
+                    &format!("/api/v1/plant/energy/{plant_id}/flow"),
+                    Some(&[("date", date)]),
+                )
+                .await?;
             responses.insert(
                 "plant_energy_flow".into(),
-                client
-                    .inspect_endpoint(
-                        &format!("/api/v1/plant/energy/{plant_id}/flow"),
-                        Some(&[("date", date)]),
-                    )
-                    .await?,
+                require_success_response(response)?,
             );
         }
 
@@ -119,6 +119,20 @@ pub(crate) fn run(args: &[String], settings: Settings) -> Result<()> {
     fs::write(&output, json).context("could not write API fixture")?;
     println!("Wrote redacted API fixture to {}", output.display());
     Ok(())
+}
+
+fn require_success_response((status, response): (u16, Value)) -> Result<Value> {
+    if !(200..300).contains(&status) {
+        bail!("SunSynk returned HTTP {status} while capturing diagnostics");
+    }
+    if response.get("success").and_then(Value::as_bool) != Some(true) {
+        let message = response
+            .get("msg")
+            .and_then(Value::as_str)
+            .unwrap_or("SunSynk API request failed");
+        bail!("SunSynk diagnostics request failed: {message}");
+    }
+    Ok(response)
 }
 
 fn option(args: &[String], name: &str) -> Option<String> {

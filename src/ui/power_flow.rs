@@ -1,5 +1,7 @@
 use crate::{app::Dashboard, domain::EnergySnapshot, ui::format::format_power};
-use gpui_kit::component::{Icon, IconName, StyledExt, Theme};
+use gpui_kit::component::{tooltip::Tooltip, Icon, IconName, StyledExt, Theme};
+use gpui_kit::prelude::FluentBuilder;
+use gpui_kit::InteractiveElement;
 use gpui_kit::*;
 use std::time::Duration;
 
@@ -43,6 +45,9 @@ pub(crate) fn render(
                     } else {
                         "Input"
                     },
+                    None,
+                    None,
+                    None,
                 ))
                 .child(flow_node(
                     theme,
@@ -55,6 +60,9 @@ pub(crate) fn render(
                     } else {
                         format_power(snapshot.battery_watts)
                     },
+                    None,
+                    None,
+                    None,
                 )),
         )
         .child(flow_connector(
@@ -98,6 +106,9 @@ pub(crate) fn render(
                     } else {
                         "Load"
                     },
+                    None,
+                    None,
+                    None,
                 ))
                 .child(flow_node(
                     theme,
@@ -105,15 +116,22 @@ pub(crate) fn render(
                     "Grid",
                     format_power(snapshot.grid_watts.abs()),
                     snapshot.grid_watts.abs() > 1.,
-                    if snapshot.grid_watts.abs() <= 1. {
-                        "Idle"
-                    } else if snapshot.grid_watts < 0. {
-                        "Exporting"
-                    } else {
-                        "Importing"
-                    },
+                    grid_detail(snapshot),
+                    snapshot.grid_connected,
+                    snapshot.grid_voltage,
+                    snapshot.grid_frequency,
                 )),
         )
+}
+
+fn grid_detail(snapshot: &EnergySnapshot) -> &'static str {
+    if snapshot.grid_watts.abs() <= 1. {
+        "Idle"
+    } else if snapshot.grid_watts < 0. {
+        "Exporting"
+    } else {
+        "Importing"
+    }
 }
 
 fn flow_node(
@@ -123,6 +141,9 @@ fn flow_node(
     value: String,
     active: bool,
     detail: impl Into<SharedString>,
+    connected: Option<bool>,
+    voltage: Option<f64>,
+    frequency: Option<f64>,
 ) -> impl IntoElement {
     div()
         .v_flex()
@@ -138,15 +159,64 @@ fn flow_node(
         .child(
             div()
                 .h_flex()
+                .w_full()
+                .justify_between()
                 .gap_2()
                 .text_xs()
                 .text_color(theme.muted_foreground)
-                .child(icon.size_4().text_color(if active {
-                    theme.foreground
-                } else {
-                    theme.muted_foreground
-                }))
-                .child(label.to_owned()),
+                .child(
+                    div()
+                        .h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(icon.size_4().text_color(if active {
+                            theme.foreground
+                        } else {
+                            theme.muted_foreground
+                        }))
+                        .child(label.to_owned()),
+                )
+                .when_some(connected, |row, connected| {
+                    let state = if connected {
+                        "Connected"
+                    } else {
+                        "Disconnected"
+                    };
+                    let voltage_text = voltage
+                        .map(|value| format!("{value:.1} V"))
+                        .unwrap_or_else(|| "Unavailable".into());
+                    let frequency_text = frequency
+                        .map(|value| format!("{value:.2} Hz"))
+                        .unwrap_or_else(|| "Unavailable".into());
+                    let color = match connected {
+                        true => rgb(0x34c759),
+                        false => rgb(0xff453a),
+                    };
+                    let state = state.to_owned();
+                    row.child(
+                        div()
+                            .size(px(16.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .id("grid-status-indicator")
+                            .child(div().size(px(8.)).rounded_full().bg(color))
+                            .tooltip(move |window, cx| {
+                                let state = state.clone();
+                                let voltage = voltage_text.clone();
+                                let frequency = frequency_text.clone();
+                                Tooltip::element(move |_, _| {
+                                    div()
+                                        .v_flex()
+                                        .gap_1()
+                                        .child(format!("Grid {state}"))
+                                        .child(format!("Voltage: {voltage}"))
+                                        .child(format!("Frequency: {frequency}"))
+                                })
+                                .build(window, cx)
+                            }),
+                    )
+                }),
         )
         .child(div().text_lg().font_weight(FontWeight::MEDIUM).child(value))
         .child(

@@ -113,6 +113,37 @@ impl MonitorController {
         }
     }
 
+    pub(crate) fn inspect_api_endpoint(
+        &self,
+        path: String,
+        params: Vec<(String, String)>,
+    ) -> tokio::sync::oneshot::Receiver<Result<(u16, serde_json::Value), String>> {
+        let (response_sender, response_receiver) = tokio::sync::oneshot::channel();
+        let Some(sender) = self.poll_sender.as_ref() else {
+            let _ =
+                response_sender.send(Err("Connect an account before making API requests.".into()));
+            return response_receiver;
+        };
+        if let Err(error) = sender.try_send(PollCommand::InspectEndpoint {
+            path,
+            params,
+            response: response_sender,
+        }) {
+            let (command, message) = match error {
+                tokio::sync::mpsc::error::TrySendError::Full(command) => {
+                    (command, "The API request queue is busy. Try again shortly.")
+                }
+                tokio::sync::mpsc::error::TrySendError::Closed(command) => {
+                    (command, "The authenticated API session has stopped.")
+                }
+            };
+            if let PollCommand::InspectEndpoint { response, .. } = command {
+                let _ = response.send(Err(message.into()));
+            }
+        }
+        response_receiver
+    }
+
     pub(crate) fn record_connection_event(&mut self, message: impl Into<String>) {
         Self::record_connection_event_to(
             &self.connection_log,

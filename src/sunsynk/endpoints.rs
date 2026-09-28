@@ -1,7 +1,9 @@
-use super::{error::AuthenticationExpired, parsing::*, SunsynkClient};
+use super::{
+    client::response_indicates_expired, error::AuthenticationExpired, parsing::*, SunsynkClient,
+};
 use crate::domain::{EnergySnapshot, HistorySeries, InverterSummary};
 use anyhow::{anyhow, bail, Result};
-use futures_util::future::join3;
+use futures_util::future::join4;
 use serde_json::Value;
 
 impl SunsynkClient {
@@ -67,18 +69,21 @@ impl SunsynkClient {
         include_today_history: bool,
     ) -> Result<(EnergySnapshot, Option<Vec<HistorySeries>>)> {
         let today = chrono::Local::now().date_naive().to_string();
-        // Authenticate once, then fetch the three independent readings in
+        // Authenticate once, then fetch the independent readings in
         // parallel. Each clone shares reqwest's connection pool while keeping
         // the client's mutable token state isolated from the other requests.
         self.ensure_authenticated().await?;
         let realtime_path = format!("/api/v1/plant/{plant_id}/realtime");
         let flow_path = format!("/api/v1/plant/energy/{plant_id}/flow");
         let day_path = format!("/api/v1/plant/energy/{plant_id}/day");
+        let grid_path = format!("/api/v1/inverter/grid/{serial}/realtime");
         let mut responses = self
             .parallel_readings(
                 &realtime_path,
                 &flow_path,
                 &day_path,
+                &grid_path,
+                serial,
                 plant_id,
                 &today,
                 include_today_history,
@@ -98,13 +103,15 @@ impl SunsynkClient {
                     &realtime_path,
                     &flow_path,
                     &day_path,
+                    &grid_path,
+                    serial,
                     plant_id,
                     &today,
                     include_today_history,
                 )
                 .await?;
         }
-        let [realtime, flow, day] = responses;
+        let [realtime, flow, day, grid] = responses;
         // Flow is the authoritative live-state response. Keep the live
         // dashboard usable if an auxiliary energy endpoint is unavailable.
         let realtime = match realtime {
@@ -119,6 +126,16 @@ impl SunsynkClient {
         let live = flow_object(&flow)
             .ok_or_else(|| anyhow!("SunSynk plant flow response contained no live readings"))?;
         let mut snapshot = snapshot_from_flow(live, serial);
+        if let Some(grid) = grid.as_ref().ok() {
+            snapshot.grid_voltage = grid_voltage(grid);
+            snapshot.grid_frequency = grid_frequency(grid);
+            snapshot.grid_connected = match (snapshot.grid_voltage, snapshot.grid_frequency) {
+                (Some(voltage), Some(frequency)) => {
+                    Some(voltage >= 100.0 && (45.0..=65.0).contains(&frequency))
+                }
+                _ => None,
+            };
+        }
         snapshot.solar_yield_kwh = realtime
             .as_ref()
             .and_then(|value| data(value).ok())
@@ -144,17 +161,21 @@ impl SunsynkClient {
         realtime_path: &str,
         flow_path: &str,
         day_path: &str,
+        grid_path: &str,
+        serial: &str,
         plant_id: i64,
         today: &str,
         include_today_history: bool,
-    ) -> Result<[Result<Value>; 3]> {
+    ) -> Result<[Result<Value>; 4]> {
         let realtime_client = self.clone();
         let flow_client = self.clone();
         let day_client = self.clone();
+        let grid_client = self.clone();
         let realtime_path = realtime_path.to_owned();
         let flow_path = flow_path.to_owned();
         let day_path = day_path.to_owned();
         let today = today.to_owned();
+        let serial = serial.to_owned();
         let realtime = async move {
             realtime_client
                 .get_authenticated(&realtime_path, Some(&[("id", plant_id.to_string())]))
@@ -182,16 +203,48 @@ impl SunsynkClient {
                 Ok(Value::Null)
             }
         };
-        let (realtime, flow, day) = join3(realtime, flow, day).await;
-        Ok([realtime, flow, day])
+        let grid = async move {
+            tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                grid_client.get_authenticated(&grid_path, Some(&[("sn", serial)])),
+            )
+            .await
+            .map_err(|_| anyhow!("SunSynk grid realtime request timed out"))?
+        };
+        let (realtime, flow, day, grid) = join4(realtime, flow, day, grid).await;
+        Ok([realtime, flow, day, grid])
     }
 
     pub async fn inspect_endpoint(
-        &mut self,
+        &self,
         path: &str,
         params: Option<&[(&str, String)]>,
-    ) -> Result<Value> {
-        self.get(path, params).await
+    ) -> Result<(u16, Value)> {
+        // Inspection output belongs in the inspector, not the connection log.
+        let mut client = self.clone();
+        client.request_log = None;
+        client.ensure_authenticated().await?;
+        match client.request_with_status("GET", path, params, None).await {
+            Ok((_, response)) if response_indicates_expired(&response) => {
+                client
+                    .auth
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .access_token = None;
+                client.ensure_authenticated().await?;
+                client.request_with_status("GET", path, params, None).await
+            }
+            Err(error) if is_auth_expired(&error) => {
+                client
+                    .auth
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .access_token = None;
+                client.ensure_authenticated().await?;
+                client.request_with_status("GET", path, params, None).await
+            }
+            result => result,
+        }
     }
 
     pub async fn history(&self, plant_id: i64, date: &str) -> Result<Vec<HistorySeries>> {
@@ -205,6 +258,26 @@ impl SunsynkClient {
         // other non-parallel request, including its expiry retry.
         Ok(history_series(&self.get(&day_path, Some(&params)).await?))
     }
+}
+
+fn grid_voltage(response: &Value) -> Option<f64> {
+    let data = response.get("data")?;
+    data.get("vip")?
+        .as_array()?
+        .iter()
+        .filter_map(|channel| {
+            channel
+                .get("volt")
+                .and_then(crate::sunsynk::parsing::parse_number)
+        })
+        .reduce(f64::max)
+}
+
+fn grid_frequency(response: &Value) -> Option<f64> {
+    response
+        .get("data")?
+        .get("fac")
+        .and_then(crate::sunsynk::parsing::parse_number)
 }
 
 fn is_auth_expired(error: &anyhow::Error) -> bool {

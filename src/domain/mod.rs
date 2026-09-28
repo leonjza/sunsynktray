@@ -16,6 +16,15 @@ pub(crate) struct EnergySnapshot {
     pub(crate) to_battery: Option<bool>,
     pub(crate) battery_to: Option<bool>,
     pub(crate) grid_to: Option<bool>,
+    /// Live grid availability from the inverter grid realtime endpoint.
+    /// This is intentionally omitted from persisted snapshots because it is
+    /// refreshed independently and should not be presented as current later.
+    #[serde(skip)]
+    pub(crate) grid_connected: Option<bool>,
+    #[serde(skip)]
+    pub(crate) grid_voltage: Option<f64>,
+    #[serde(skip)]
+    pub(crate) grid_frequency: Option<f64>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
