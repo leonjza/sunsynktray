@@ -40,6 +40,10 @@ enum Command {
         expected_epoch: u64,
         reply: mpsc::Sender<Result<()>>,
     },
+    PurgeHistory {
+        email: String,
+        reply: mpsc::Sender<Result<()>>,
+    },
     Flush {
         reply: mpsc::Sender<()>,
     },
@@ -232,6 +236,12 @@ impl Database {
         });
     }
 
+    pub(crate) fn purge_history(&self, email: String) -> Result<()> {
+        let (reply, result) = mpsc::channel();
+        self.sender.send(Command::PurgeHistory { email, reply })?;
+        result.recv().context("database worker stopped")?
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn save_history_and_backfill(
         &self,
@@ -384,6 +394,9 @@ fn run(
                 );
                 let _ = reply.send(result.map_err(Into::into));
             }
+            Command::PurgeHistory { email, reply } => {
+                let _ = reply.send(purge_history(&connection, &email).map_err(Into::into));
+            }
             Command::Flush { reply } => {
                 let _ = reply.send(());
             }
@@ -393,6 +406,27 @@ fn run(
             break;
         }
     }
+}
+
+fn purge_history(connection: &Connection, email: &str) -> Result<()> {
+    let transaction = connection.unchecked_transaction()?;
+    if let Some(account_id) = transaction
+        .query_row("SELECT id FROM accounts WHERE email=?1", [email], |row| {
+            row.get::<_, i64>(0)
+        })
+        .optional()?
+    {
+        transaction.execute(
+            "DELETE FROM history_points WHERE account_id=?1",
+            [account_id],
+        )?;
+        transaction.execute(
+            "DELETE FROM backfill_state WHERE account_id=?1",
+            [account_id],
+        )?;
+    }
+    transaction.commit()?;
+    Ok(())
 }
 
 fn read(connection: Connection, receiver: mpsc::Receiver<ReadCommand>) {

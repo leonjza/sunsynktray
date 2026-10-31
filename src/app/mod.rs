@@ -61,6 +61,11 @@ pub(crate) struct Dashboard {
 
 pub(crate) const COMPACT_WINDOW_HEIGHT: f32 = 360.;
 impl Dashboard {
+    pub(crate) fn purge_history_cache(&mut self, cx: &mut Context<Self>) {
+        let controller = self.controller.clone();
+        controller.update(cx, |controller, cx| controller.purge_history_cache(cx));
+    }
+
     pub(crate) fn new(
         state: Arc<MonitorState>,
         controller: Entity<MonitorController>,

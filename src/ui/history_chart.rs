@@ -26,8 +26,8 @@ pub(crate) struct HistoryPlot {
     pub(crate) power_indices: Vec<usize>,
     pub(crate) soc_indices: Vec<usize>,
     pub(crate) times: Arc<Vec<String>>,
-    pub(crate) time_indices: Arc<std::collections::HashMap<String, usize>>,
     pub(crate) power_bounds: (f64, f64),
+    pub(crate) full_day: bool,
 }
 
 impl Plot for HistoryPlot {
@@ -45,27 +45,23 @@ impl Plot for HistoryPlot {
         let (min_value, max_value) = self.power_bounds;
         let y = ScaleLinear::new([min_value, max_value], [height, PLOT_TOP]);
         let y_ticks = [min_value, (min_value + max_value) / 2., max_value];
-        let tick_margin = (self.times.len() / 5).max(1);
-        let x_labels = self.times.iter().enumerate().filter_map(|(index, label)| {
-            (index % tick_margin == 0)
-                .then(|| {
-                    Some(x_position(index, self.times.len(), plot_width)).map(|position| {
-                        let align = if index == 0 {
-                            TextAlign::Left
-                        } else if index == self.times.len() - 1 {
-                            TextAlign::Right
-                        } else {
-                            TextAlign::Center
-                        };
-                        AxisText::new(
-                            label.clone(),
-                            position + PLOT_LEFT,
-                            cx.theme().muted_foreground,
-                        )
-                        .align(align)
-                    })
-                })
-                .flatten()
+        let domain_end = self.domain_end_minutes();
+        let x_ticks = time_ticks(domain_end, self.full_day);
+        let x_labels = x_ticks.iter().enumerate().map(|(index, &minute)| {
+            let position = x_position(minute, domain_end, plot_width);
+            let align = if index == 0 {
+                TextAlign::Left
+            } else if index == x_ticks.len() - 1 {
+                TextAlign::Right
+            } else {
+                TextAlign::Center
+            };
+            AxisText::new(
+                format_time(minute),
+                position + PLOT_LEFT,
+                cx.theme().muted_foreground,
+            )
+            .align(align)
         });
         let y_labels = y_ticks.iter().filter_map(|value| {
             y.tick(value).map(|position| {
@@ -105,8 +101,6 @@ impl Plot for HistoryPlot {
                 .enumerate()
             {
                 let series = &self.history[index];
-                let time_indices = self.time_indices.clone();
-                let times_len = self.times.len();
                 let y_scale = if self.soc_indices.contains(&index) {
                     soc_y.clone()
                 } else {
@@ -115,9 +109,8 @@ impl Plot for HistoryPlot {
                 Line::new()
                     .data(series.points.iter())
                     .x(move |point| {
-                        time_indices
-                            .get(&point.time)
-                            .map(|&index| x_position(index, times_len, plot_width))
+                        time_of_day_minutes(&point.time)
+                            .map(|minute| x_position(minute, domain_end, plot_width))
                     })
                     .y(move |point| y_scale.tick(&point.watts))
                     .stroke(colors[series_color_index(&series.label) % colors.len()])
@@ -150,9 +143,18 @@ impl Plot for HistoryPlot {
         {
             return None;
         }
-        let index =
-            ((x / plot_width) * (self.times.len().saturating_sub(1) as f32)).round() as usize;
-        let index = index.min(self.times.len() - 1);
+        let domain_end = self.domain_end_minutes();
+        let target_minute = (x / plot_width) * domain_end;
+        let (index, minute) = self
+            .times
+            .iter()
+            .enumerate()
+            .filter_map(|(index, time)| time_of_day_minutes(time).map(|minute| (index, minute)))
+            .min_by(|left, right| {
+                (left.1 - target_minute)
+                    .abs()
+                    .total_cmp(&(right.1 - target_minute).abs())
+            })?;
         let (min_value, max_value) = self.power_bounds;
         let power_y_scale = ScaleLinear::new([min_value, max_value], [plot_height, PLOT_TOP]);
         let soc_y_scale = ScaleLinear::new([0., 100.], [plot_height, PLOT_TOP]);
@@ -170,7 +172,7 @@ impl Plot for HistoryPlot {
                     power_y_scale.tick(&value)?
                 };
                 Some(point(
-                    px(PLOT_LEFT + x_position(index, self.times.len(), plot_width)),
+                    px(PLOT_LEFT + x_position(minute, domain_end, plot_width)),
                     px(y),
                 ))
             })
@@ -178,7 +180,7 @@ impl Plot for HistoryPlot {
         Some(TooltipState::new(
             index,
             point(
-                px(PLOT_LEFT + x_position(index, self.times.len(), plot_width)),
+                px(PLOT_LEFT + x_position(minute, domain_end, plot_width)),
                 position.y,
             ),
             dots,
@@ -232,12 +234,68 @@ impl Plot for HistoryPlot {
     }
 }
 
-fn x_position(index: usize, count: usize, width: f32) -> f32 {
-    if count <= 1 {
-        0.
-    } else {
-        index as f32 / (count - 1) as f32 * width
+impl HistoryPlot {
+    fn domain_end_minutes(&self) -> f32 {
+        if self.full_day {
+            24. * 60.
+        } else {
+            self.times
+                .iter()
+                .filter_map(|time| time_of_day_minutes(time))
+                .fold(0_f32, f32::max)
+                .max(1.)
+        }
     }
+}
+
+fn time_of_day_minutes(value: &str) -> Option<f32> {
+    let mut parts = value.trim().split(':');
+    let hour = parts.next()?.parse::<u8>().ok()?;
+    let minute = parts.next()?.parse::<u8>().ok()?;
+    let second = parts
+        .next()
+        .map(str::parse::<f32>)
+        .transpose()
+        .ok()?
+        .unwrap_or(0.);
+    if parts.next().is_some() || hour > 23 || minute > 59 || !(0. ..60.).contains(&second) {
+        return None;
+    }
+    Some(hour as f32 * 60. + minute as f32 + second / 60.)
+}
+
+fn x_position(minute: f32, domain_end: f32, width: f32) -> f32 {
+    (minute / domain_end).clamp(0., 1.) * width
+}
+
+fn time_ticks(domain_end: f32, full_day: bool) -> Vec<f32> {
+    if full_day {
+        return vec![0., 240., 480., 720., 960., 1200., 1439.];
+    }
+
+    let step = if domain_end <= 240. {
+        60.
+    } else if domain_end <= 480. {
+        120.
+    } else {
+        240.
+    };
+    let mut ticks = (0..)
+        .map(|index| index as f32 * step)
+        .take_while(|&minute| minute <= domain_end)
+        .collect::<Vec<_>>();
+    if ticks
+        .last()
+        .is_none_or(|last| domain_end - last >= step / 2.)
+    {
+        ticks.push(domain_end);
+    }
+    ticks
+}
+
+fn format_time(minute: f32) -> String {
+    let minute = minute.round().clamp(0., 1439.) as u16;
+    format!("{:02}:{:02}", minute / 60, minute % 60)
 }
 
 pub(crate) fn legend(theme: &Theme, history: &[HistorySeries]) -> impl IntoElement {

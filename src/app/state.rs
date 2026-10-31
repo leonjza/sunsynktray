@@ -21,7 +21,6 @@ pub(crate) struct HistorySnapshot {
     pub(crate) series: Arc<Vec<HistorySeries>>,
     pub(crate) index: Arc<HistoryPointIndex>,
     pub(crate) times: Arc<Vec<String>>,
-    pub(crate) time_indices: Arc<HashMap<String, usize>>,
     pub(crate) power_indices: Arc<Vec<usize>>,
     pub(crate) soc_indices: Arc<Vec<usize>>,
     pub(crate) power_bounds: (f64, f64),
@@ -160,15 +159,9 @@ fn index_history(history: &[HistorySeries]) -> HistoryPointIndex {
 fn make_history_snapshot(history: Arc<Vec<HistorySeries>>) -> HistorySnapshot {
     let power_indices = power_indices(&history);
     let times = history_times(&history);
-    let time_indices = times
-        .iter()
-        .enumerate()
-        .map(|(index, time)| (time.clone(), index))
-        .collect();
     HistorySnapshot {
         index: Arc::new(index_history(&history)),
         times: Arc::new(times),
-        time_indices: Arc::new(time_indices),
         soc_indices: Arc::new(soc_indices(&history)),
         power_bounds: power_bounds(&history, &power_indices),
         power_indices: Arc::new(power_indices),

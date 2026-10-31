@@ -96,6 +96,7 @@ impl Render for Dashboard {
                     status_fetching,
                     self.history_date_picker.clone(),
                     controller.history_source,
+                    controller.history_date,
                     controller.inverters.iter().find(|inverter| {
                         Some(&inverter.serial) == controller.selected_serial.as_ref()
                     }),

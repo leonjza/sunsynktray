@@ -19,6 +19,17 @@ pub(super) fn should_queue_command(command: &PollCommand, fetching: bool) -> boo
 }
 
 impl MonitorController {
+    pub(crate) fn purge_history_cache(&mut self, cx: &mut Context<Self>) {
+        self.history_cache.clear();
+        self.history_cache_order.clear();
+        if self.send_poll_command(PollCommand::PurgeHistoryCache, cx) {
+            self.activity = "Clearing history cache and refetching…".into();
+        } else {
+            self.activity = "Could not clear history cache while disconnected".into();
+        }
+        cx.notify();
+    }
+
     pub(crate) fn toggle_backfill(&mut self, cx: &mut Context<Self>) {
         let command = if self.backfill_running {
             PollCommand::PauseBackfill
@@ -404,7 +415,9 @@ impl MonitorController {
         self.history_is_manual = date != today;
         if let Some(serial) = self.selected_serial.as_ref() {
             let cached = self.history_cache.get(&(serial.clone(), date)).cloned();
-            if let Some((history, source)) = cached {
+            if let Some((history, source)) = cached
+                .filter(|(history, _)| date >= today || worker::history_spans_full_day(history))
+            {
                 self.history_cache_order
                     .retain(|key| key != &(serial.clone(), date));
                 self.history_cache_order.push_back((serial.clone(), date));

@@ -29,6 +29,7 @@ pub(crate) fn render(
     fetching: bool,
     history_date_picker: Entity<DatePickerState>,
     history_source: HistorySource,
+    history_date: chrono::NaiveDate,
     selected_inverter: Option<&InverterSummary>,
     entity: Entity<Dashboard>,
     controller: Entity<MonitorController>,
@@ -190,6 +191,7 @@ pub(crate) fn render(
             data.history,
             history_date_picker,
             history_source,
+            history_date,
             entity,
         ));
     }
@@ -265,6 +267,7 @@ fn history_chart(
     history: crate::app::HistorySnapshot,
     history_date_picker: Entity<DatePickerState>,
     source: HistorySource,
+    history_date: chrono::NaiveDate,
     entity: Entity<Dashboard>,
 ) -> AnyElement {
     let previous = entity.clone();
@@ -280,8 +283,8 @@ fn history_chart(
             power_indices: history.power_indices.as_ref().clone(),
             soc_indices: history.soc_indices.as_ref().clone(),
             times: history.times.clone(),
-            time_indices: history.time_indices.clone(),
             power_bounds: history.power_bounds,
+            full_day: history_date < chrono::Local::now().date_naive(),
         });
     div()
         .v_flex()

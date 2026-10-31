@@ -77,6 +77,7 @@ pub(crate) enum Command {
     Stop,
     Select(String, Option<i64>),
     HistoryDate(chrono::NaiveDate),
+    PurgeHistoryCache,
     PauseBackfill,
     ResumeBackfill,
 }

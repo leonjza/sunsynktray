@@ -30,6 +30,21 @@ struct LiveTaskResult {
     refresh_token: Option<String>,
 }
 
+pub(super) fn history_spans_full_day(history: &[crate::domain::HistorySeries]) -> bool {
+    !history.is_empty()
+        && history.iter().all(|series| {
+            let Some(first_time) = series.points.iter().map(|point| point.time.as_str()).min()
+            else {
+                return false;
+            };
+            let Some(last_time) = series.points.iter().map(|point| point.time.as_str()).max()
+            else {
+                return false;
+            };
+            first_time <= "00:05" && last_time >= "23:50"
+        })
+}
+
 pub(crate) fn spawn(
     config: PollConfig,
 ) -> (
@@ -351,21 +366,30 @@ async fn run(
                         result: Err(error),
                     }) => {
                         let transport_error = is_transport_error(&error);
+                        let incomplete_history =
+                            error.to_string().starts_with("incomplete history day:");
                         next_backfill_at = Instant::now() + BACKFILL_INTERVAL;
-                        if !transport_error {
+                        if !transport_error && !incomplete_history {
                             backfill_completed += 1;
                             backfill_date = date - chrono::Duration::days(1);
                         }
-                        if !transport_error && backfill_completed >= total_backfill {
+                        if !transport_error
+                            && !incomplete_history
+                            && backfill_completed >= total_backfill
+                        {
                             backfill_running = false;
                         }
                         let complete = !backfill_running;
                         save_backfill(
                             &serial,
-                            if transport_error { date } else { backfill_date },
+                            if transport_error || incomplete_history {
+                                date
+                            } else {
+                                backfill_date
+                            },
                             oldest_date,
                             if complete { "complete" } else { "running" },
-                            transport_error.then(|| error.to_string()),
+                            (transport_error || incomplete_history).then(|| error.to_string()),
                         );
                         if !send_cancellable(
                             &sender,
@@ -375,6 +399,8 @@ async fn run(
                                 running: true,
                                 detail: if complete {
                                     "Up to date".into()
+                                } else if incomplete_history {
+                                    format!("Incomplete data for {date}; will retry")
                                 } else if transport_error {
                                     format!("Failed {date}: {error}; will retry")
                                 } else {
@@ -667,6 +693,57 @@ async fn run(
                 .await;
                 continue;
             }
+            Some(Ok(Some(Command::PurgeHistoryCache))) => {
+                backfill_cancel_epoch.fetch_add(1, Ordering::Release);
+                if let Some(task) = backfill_task.take() {
+                    task.abort();
+                }
+                if let Some(task) = history_task.take() {
+                    task.abort();
+                }
+                if let Some(task) = live_task.take() {
+                    task.abort();
+                }
+                let database = config.database.clone();
+                let email = config.email.clone();
+                let result =
+                    tokio::task::spawn_blocking(move || database.purge_history(email)).await;
+                match result {
+                    Ok(Ok(())) => {
+                        let today = chrono::Local::now().date_naive();
+                        let yesterday = today - chrono::Duration::days(1);
+                        oldest_date = today - chrono::Duration::days(total_backfill as i64);
+                        backfill_date = yesterday;
+                        backfill_completed = 0;
+                        backfill_running = total_backfill > 0;
+                        next_backfill_at = Instant::now();
+                        next_refresh_at = Instant::now();
+                        next_today_history_at = Instant::now();
+                        save_backfill(
+                            &serial,
+                            backfill_date,
+                            oldest_date,
+                            if backfill_running {
+                                "running"
+                            } else {
+                                "complete"
+                            },
+                            None,
+                        );
+                        let _ = sender
+                            .send(PollResult::BackfillProgress {
+                                completed: 0,
+                                total: total_backfill,
+                                running: backfill_running,
+                                detail: "History cache cleared; refetching full days".into(),
+                                next_request_in: None,
+                            })
+                            .await;
+                    }
+                    Ok(Err(error)) => tracing::warn!(%error, "could not purge history cache"),
+                    Err(error) => tracing::warn!(%error, "history cache purge task failed"),
+                }
+            }
             Some(Ok(Some(Command::HistoryDate(date)))) => {
                 if let Some(task) = history_task.take() {
                     task.abort();
@@ -712,13 +789,37 @@ async fn run(
                                 Vec::new()
                             }
                         };
-                        if cached.is_empty() {
-                            history_client
-                                .history(plant_id, &date.to_string())
-                                .await
-                                .map(|history| (history, crate::app::HistorySource::Network))
-                        } else {
+                        let is_past_date = date < chrono::Local::now().date_naive();
+                        if !cached.is_empty() && (!is_past_date || history_spans_full_day(&cached))
+                        {
                             Ok((cached, crate::app::HistorySource::Cached))
+                        } else {
+                            match history_client.history(plant_id, &date.to_string()).await {
+                                Ok(history)
+                                    if date >= chrono::Local::now().date_naive()
+                                        || history_spans_full_day(&history) =>
+                                {
+                                    Ok((history, crate::app::HistorySource::Network))
+                                }
+                                Ok(_) if history_spans_full_day(&cached) => {
+                                    Ok((cached, crate::app::HistorySource::Cached))
+                                }
+                                Ok(_) => {
+                                    Err(anyhow!("history response did not contain a full day"))
+                                }
+                                Err(error) if history_spans_full_day(&cached) => {
+                                    crate::app::MonitorController::record_connection_event_to(
+                                        &connection_log,
+                                        &connection_log_revision,
+                                        &connection_log_signal,
+                                        format!(
+                                            "Could not refresh incomplete history for {date}: {error}"
+                                        ),
+                                    );
+                                    Ok((cached, crate::app::HistorySource::Cached))
+                                }
+                                Err(error) => Err(error),
+                            }
                         }
                     } else {
                         Err(anyhow!("selected inverter has no plant"))
@@ -786,6 +887,9 @@ async fn run(
             let expected_epoch = cancel_epoch.load(Ordering::Acquire);
             backfill_task = Some(tokio::spawn(async move {
                 let result = match history_client.history(plant_id, &date.to_string()).await {
+                    Ok(history) if !history_spans_full_day(&history) => Err(anyhow!(
+                        "incomplete history day: API returned a partial day"
+                    )),
                     Ok(history) => tokio::task::spawn_blocking(move || {
                         database.save_history_and_backfill(
                             email,

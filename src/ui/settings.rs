@@ -6,11 +6,12 @@ use gpui_kit::component::{
     button::{Button, ButtonVariants},
     form::Field,
     input::{Input, InputState},
+    popover::Popover,
     progress::Progress,
     radio::Radio,
     scroll::ScrollableElement,
     switch::Switch,
-    Disableable, Sizable, StyledExt, Theme,
+    Disableable, Icon, Sizable, StyledExt, Theme,
 };
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
@@ -100,9 +101,50 @@ pub(crate) fn render(view: SettingsView<'_>) -> AnyElement {
                 })
                 .child(
                     div()
-                        .text_xs()
-                        .text_color(theme.muted_foreground)
-                        .child("SunTray gradually fills this range in the background."),
+                        .h_flex()
+                        .items_center()
+                        .justify_between()
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(theme.muted_foreground)
+                                .child("SunTray gradually fills this range in the background."),
+                        )
+                        .child({
+                            let purge_action = entity.clone();
+                            Popover::new("purge-history-cache-popover")
+                                .trigger(
+                                    Button::new("purge-history-cache")
+                                        .child(Icon::empty().path("icons/trash.svg"))
+                                        .small()
+                                        .ghost()
+                                        .accessibility_label("Clear history cache")
+                                        .tooltip("Clear cached history"),
+                                )
+                                .content(move |_, _, _| {
+                                    let target = purge_action.clone();
+                                    div()
+                                        .v_flex()
+                                        .gap_2()
+                                        .w(px(245.))
+                                        .child(
+                                            div().text_sm().child(
+                                                "Clear the history cache and fetch it again?",
+                                            ),
+                                        )
+                                        .child(
+                                            Button::new("purge-history-cache-confirm")
+                                                .label("Clear cache")
+                                                .small()
+                                                .danger()
+                                                .on_click(move |_, _, cx| {
+                                                    target.update(cx, |dashboard, cx| {
+                                                        dashboard.purge_history_cache(cx)
+                                                    });
+                                                }),
+                                        )
+                                })
+                        }),
                 )
                 .child(backfill_panel(
                     theme,
