@@ -12,14 +12,13 @@ pub(crate) fn open_main_window(
     if let Err(error) = gpui_kit::open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
-            titlebar: Some(gpui_kit::component::TitleBar::title_bar_options()),
             is_resizable: true,
             focus: show,
             show,
             // The dashboard body is scrollable, and compact mode needs to be
             // able to resize the native window below the full dashboard size.
             window_min_size: Some(size(px(560.), px(360.))),
-            ..Default::default()
+            ..gpui_kit::component::TitleBar::window_options()
         },
         cx,
         |window, cx| {
@@ -68,12 +67,11 @@ pub(crate) fn open_connection_log_window(
     let (handle, _) = match gpui_kit::open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
-            titlebar: Some(gpui_kit::component::TitleBar::title_bar_options()),
             is_resizable: true,
             focus: true,
             show: true,
             window_min_size: Some(size(px(640.), px(300.))),
-            ..Default::default()
+            ..gpui_kit::component::TitleBar::window_options()
         },
         cx,
         |window, cx| {
@@ -126,12 +124,11 @@ pub(crate) fn open_api_inspector_window(
     let (handle, _) = match gpui_kit::open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
-            titlebar: Some(gpui_kit::component::TitleBar::title_bar_options()),
             is_resizable: true,
             focus: true,
             show: true,
             window_min_size: Some(size(px(760.), px(560.))),
-            ..Default::default()
+            ..gpui_kit::component::TitleBar::window_options()
         },
         cx,
         |window, cx| {
@@ -181,12 +178,11 @@ pub(crate) fn open_notification_center_window(
     let (handle, _) = match gpui_kit::open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
-            titlebar: Some(gpui_kit::component::TitleBar::title_bar_options()),
             is_resizable: true,
             focus: true,
             show: true,
             window_min_size: Some(size(px(800.), px(500.))),
-            ..Default::default()
+            ..gpui_kit::component::TitleBar::window_options()
         },
         cx,
         |window, cx| {

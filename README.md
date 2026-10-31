@@ -135,14 +135,12 @@ cargo test --locked
 
 ## Core dependency notes
 
-SunTray uses `gpui-kit` 0.7 and its matching `gpui-pre` platform layer. The
-migration uses the shared window and root hosting APIs, the updated date picker
-event, and the current custom plot API while preserving system light/dark
-appearance.
+SunTray uses `gpui-kit` 0.8.1 and its matching `gpui-pre` 0.3.10 platform
+layer. The app uses Kit's default backend and keeps system light/dark appearance.
 
 `gpui-tray` is vendored in [`vendor/gpui-tray`](vendor/gpui-tray) and selected
-through the workspace patch in `Cargo.toml`. The local version follows the
-GPUI 0.7-era `gpui-pre` API and includes these platform changes:
+through the workspace patch in `Cargo.toml`. The local version builds against
+the `gpui-pre` 0.3.10 API and includes these platform changes:
 
 - macOS supports native SF Symbols and native status-item titles, keeping
   numeric tray values sharp on Retina displays.
