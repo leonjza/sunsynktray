@@ -123,6 +123,7 @@ impl Render for Dashboard {
                     startup_pending: self.startup_pending,
                     startup_error: self.startup_error.clone(),
                     refresh_interval_error: self.refresh_interval_error.clone(),
+                    history_days_error: self.history_days_error.clone(),
                     backfill_completed: controller.backfill_completed,
                     backfill_total: controller.backfill_total,
                     backfill_running: controller.backfill_running,

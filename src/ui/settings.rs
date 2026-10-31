@@ -4,8 +4,10 @@ use crate::{
 };
 use gpui_kit::component::{
     button::{Button, ButtonVariants},
+    form::Field,
     input::{Input, InputState},
     progress::Progress,
+    radio::Radio,
     scroll::ScrollableElement,
     switch::Switch,
     Disableable, Sizable, StyledExt, Theme,
@@ -29,6 +31,7 @@ pub(crate) fn render(view: SettingsView<'_>) -> AnyElement {
         startup_pending,
         startup_error,
         refresh_interval_error,
+        history_days_error,
         backfill_completed,
         backfill_total,
         backfill_running,
@@ -92,6 +95,9 @@ pub(crate) fn render(view: SettingsView<'_>) -> AnyElement {
                     "History range (days)",
                     Input::new(history_days).small().w(px(120.)),
                 ))
+                .when_some(history_days_error, |element, error| {
+                    element.child(div().text_xs().text_color(theme.danger).child(error))
+                })
                 .child(
                     div()
                         .text_xs()
@@ -150,6 +156,7 @@ pub(crate) fn render(view: SettingsView<'_>) -> AnyElement {
                         .child({
                             let entity = entity.clone();
                             Switch::new("launch-at-startup")
+                                .accessibility_label("Launch at startup")
                                 .checked(startup_enabled)
                                 .disabled(startup_pending)
                                 .small()
@@ -183,6 +190,7 @@ pub(crate) fn render(view: SettingsView<'_>) -> AnyElement {
                         .child({
                             let entity = entity.clone();
                             Switch::new("minimal-dashboard")
+                                .accessibility_label("Minimal dashboard")
                                 .checked(compact_view)
                                 .small()
                                 .on_click(move |enabled, window, cx| {
@@ -368,6 +376,7 @@ pub(crate) struct SettingsView<'a> {
     pub(crate) startup_pending: bool,
     pub(crate) startup_error: Option<String>,
     pub(crate) refresh_interval_error: Option<String>,
+    pub(crate) history_days_error: Option<String>,
     pub(crate) backfill_completed: u64,
     pub(crate) backfill_total: u64,
     pub(crate) backfill_running: bool,
@@ -377,11 +386,10 @@ pub(crate) struct SettingsView<'a> {
 }
 
 pub(crate) fn field(label: &str, input: Input) -> impl IntoElement {
-    div()
-        .v_flex()
-        .gap_1()
-        .child(div().text_sm().child(label.to_owned()))
-        .child(input.small())
+    let label = label.to_owned();
+    Field::new()
+        .label(label.clone())
+        .child(input.small().aria_label(label))
 }
 
 pub(crate) fn tray_metric_control(
@@ -395,16 +403,18 @@ pub(crate) fn tray_metric_control(
         ("Load", Some(TrayMetric::Load)),
         ("Solar", Some(TrayMetric::Solar)),
     ];
-    let mut buttons = div().h_flex().gap_1();
+    let mut buttons = div().h_flex().items_center().gap_3();
     for (index, (label, metric)) in options.into_iter().enumerate() {
         let target = entity.clone();
         buttons = buttons.child(
-            Button::new(("tray-metric", index))
+            Radio::new(("tray-metric", index))
                 .label(label)
-                .when(selected == metric, |button| button.primary())
+                .checked(selected == metric)
                 .xsmall()
-                .on_click(move |_, _, cx| {
-                    target.update(cx, |dashboard, cx| dashboard.set_tray_metric(metric, cx));
+                .on_change(move |checked, _, cx| {
+                    if *checked {
+                        target.update(cx, |dashboard, cx| dashboard.set_tray_metric(metric, cx));
+                    }
                 }),
         );
     }
@@ -486,9 +496,21 @@ pub(crate) fn connect_control(
                                 return;
                             }
                             let Ok(history_days) = history_value.parse::<u64>() else {
+                                entity.update(cx, |dashboard, cx| {
+                                    dashboard.set_history_days_error(
+                                        Some("Enter a whole number of days.".into()),
+                                        cx,
+                                    );
+                                });
                                 return;
                             };
                             if !(1..=3650).contains(&history_days) {
+                                entity.update(cx, |dashboard, cx| {
+                                    dashboard.set_history_days_error(
+                                        Some("Use a value between 1 and 3650 days.".into()),
+                                        cx,
+                                    );
+                                });
                                 return;
                             }
                             entity.update(cx, |dashboard, cx| {

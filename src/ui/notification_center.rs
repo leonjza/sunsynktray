@@ -1,6 +1,7 @@
 use crate::{app::MonitorController, domain::NotificationMessage};
 use gpui_kit::component::{
     button::{Button, ButtonVariants},
+    list::ListItem,
     scroll::ScrollableElement,
     ActiveTheme, Icon, Sizable, StyledExt, Theme, TitleBar,
 };
@@ -280,8 +281,12 @@ impl Render for NotificationCenterView {
                             let message_id = row.id.clone();
                             let is_selected = selected_id.as_deref() == Some(row_id.as_str());
                             let is_unread = row.unread;
-                            div()
-                                .id(format!("notification-row-{row_id}"))
+                            ListItem::new(format!("notification-row-{row_id}"))
+                                .accessibility_label(format!(
+                                    "{} notification: {}",
+                                    if is_unread { "Unread" } else { "Read" },
+                                    row.title
+                                ))
                                 .v_flex()
                                 .h(px(64.))
                                 .justify_center()
@@ -295,7 +300,6 @@ impl Render for NotificationCenterView {
                                 } else {
                                     row_background
                                 })
-                                .cursor_pointer()
                                 .on_click(move |_, _, cx| {
                                     let _ = click_entity.update(cx, |view, cx| {
                                         view.selected_id = Some(message_id.clone());
@@ -304,40 +308,49 @@ impl Render for NotificationCenterView {
                                 })
                                 .child(
                                     div()
-                                        .h_flex()
-                                        .items_center()
-                                        .gap_2()
-                                        .child(if is_unread {
-                                            div().size(px(7.)).rounded_full().bg(rgb(0x34c759))
-                                        } else {
-                                            div().size(px(7.))
-                                        })
+                                        .v_flex()
+                                        .w_full()
+                                        .gap_1()
                                         .child(
                                             div()
-                                                .flex_1()
-                                                .text_sm()
-                                                .text_ellipsis()
-                                                .font_weight(if is_unread {
-                                                    FontWeight::SEMIBOLD
+                                                .h_flex()
+                                                .items_center()
+                                                .gap_2()
+                                                .child(if is_unread {
+                                                    div()
+                                                        .size(px(7.))
+                                                        .rounded_full()
+                                                        .bg(rgb(0x34c759))
                                                 } else {
-                                                    FontWeight::NORMAL
+                                                    div().size(px(7.))
                                                 })
-                                                .child(row.title.clone()),
+                                                .child(
+                                                    div()
+                                                        .flex_1()
+                                                        .text_sm()
+                                                        .text_ellipsis()
+                                                        .font_weight(if is_unread {
+                                                            FontWeight::SEMIBOLD
+                                                        } else {
+                                                            FontWeight::NORMAL
+                                                        })
+                                                        .child(row.title.clone()),
+                                                )
+                                                .child(
+                                                    div()
+                                                        .text_xs()
+                                                        .text_color(row_muted_foreground)
+                                                        .child(row.received.clone()),
+                                                ),
                                         )
                                         .child(
                                             div()
+                                                .pl_4()
                                                 .text_xs()
                                                 .text_color(row_muted_foreground)
-                                                .child(row.received.clone()),
+                                                .text_ellipsis()
+                                                .child(row.description.clone()),
                                         ),
-                                )
-                                .child(
-                                    div()
-                                        .pl_4()
-                                        .text_xs()
-                                        .text_color(row_muted_foreground)
-                                        .text_ellipsis()
-                                        .child(row.description.clone()),
                                 )
                                 .border_b_1()
                                 .border_color(row_border)

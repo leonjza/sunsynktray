@@ -66,101 +66,99 @@ pub(crate) fn render(
         };
         (name, inverter.serial.clone())
     });
+    let inverter_identity = div()
+        .h_flex()
+        .items_center()
+        .gap_1()
+        .child(
+            div().text_sm().font_weight(FontWeight::MEDIUM).child(
+                identity
+                    .as_ref()
+                    .map(|(name, _)| name.clone())
+                    .unwrap_or_else(|| "Inverter".into()),
+            ),
+        )
+        .child(
+            div()
+                .text_xs()
+                .text_color(theme.muted_foreground)
+                .child("·"),
+        )
+        .child(
+            div().text_xs().text_color(theme.muted_foreground).child(
+                identity
+                    .as_ref()
+                    .map(|(_, serial)| serial.clone())
+                    .unwrap_or_else(|| snapshot.inverter_sn.clone()),
+            ),
+        );
+    let solar_yield = div()
+        .h_flex()
+        .items_center()
+        .gap_2()
+        .child(
+            div()
+                .text_xs()
+                .text_color(theme.muted_foreground)
+                .child("Solar yield"),
+        )
+        .child(
+            div()
+                .text_sm()
+                .child(format_energy(snapshot.solar_yield_kwh)),
+        );
+    let header = div()
+        .h_flex()
+        .items_center()
+        .gap_2()
+        .px_1()
+        .pb_3()
+        .border_b_1()
+        .border_color(theme.border)
+        .when(!compact_view, |header| {
+            header
+                .child(inverter_identity)
+                .child(div().flex_1())
+                .child(solar_yield)
+        })
+        .when(compact_view, |header| header.child(div().flex_1()))
+        .child(
+            Badge::new().count(unread_count as usize).small().child(
+                Button::new("notification-center")
+                    .icon(IconName::Bell)
+                    .accessibility_label("Open notification centre")
+                    .tooltip(notification_tooltip)
+                    .ghost()
+                    .xsmall()
+                    .on_click(move |_, _, cx| {
+                        crate::app::open_notification_center_window(
+                            cx,
+                            notification_controller.clone(),
+                            notification_window_handle.clone(),
+                        );
+                    }),
+            ),
+        )
+        .child(
+            Button::new("refresh")
+                .icon(Icon::empty().path("icons/refresh-cw.svg"))
+                .accessibility_label("Refresh dashboard")
+                .tooltip("Refresh dashboard")
+                .loading(fetching)
+                .loading_icon(Icon::empty().path("icons/refresh-cw.svg"))
+                .ghost()
+                .xsmall()
+                .on_click(move |_, _, cx| {
+                    refresh_entity.update(cx, |dashboard, cx| dashboard.refresh_now(cx));
+                }),
+        );
     let mut dashboard = div()
         .v_flex()
         .flex_1()
         .overflow_y_scrollbar()
         .p_4()
         .gap_4()
-        .when(!compact_view, |dashboard| {
-            dashboard.child(
-                div()
-                    .h_flex()
-                    .items_center()
-                    .gap_2()
-                    .px_1()
-                    .pb_3()
-                    .border_b_1()
-                    .border_color(theme.border)
-                    .child(
-                        div()
-                            .h_flex()
-                            .items_center()
-                            .gap_1()
-                            .child(
-                                div().text_sm().font_weight(FontWeight::MEDIUM).child(
-                                    identity
-                                        .as_ref()
-                                        .map(|(name, _)| name.clone())
-                                        .unwrap_or_else(|| "Inverter".into()),
-                                ),
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(theme.muted_foreground)
-                                    .child("·"),
-                            )
-                            .child(
-                                div().text_xs().text_color(theme.muted_foreground).child(
-                                    identity
-                                        .as_ref()
-                                        .map(|(_, serial)| serial.clone())
-                                        .unwrap_or_else(|| snapshot.inverter_sn.clone()),
-                                ),
-                            ),
-                    )
-                    .child(div().flex_1())
-                    .child(
-                        div()
-                            .h_flex()
-                            .items_center()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(theme.muted_foreground)
-                                    .child("Solar yield"),
-                            )
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .child(format_energy(snapshot.solar_yield_kwh)),
-                            ),
-                    )
-                    .child(
-                        Badge::new().count(unread_count as usize).small().child(
-                            Button::new("notification-center")
-                                .icon(IconName::Bell)
-                                .accessibility_label("Open notification centre")
-                                .tooltip(notification_tooltip)
-                                .ghost()
-                                .xsmall()
-                                .on_click(move |_, _, cx| {
-                                    crate::app::open_notification_center_window(
-                                        cx,
-                                        notification_controller.clone(),
-                                        notification_window_handle.clone(),
-                                    );
-                                }),
-                        ),
-                    )
-                    .child(
-                        Button::new("refresh")
-                            .icon(Icon::empty().path("icons/refresh-cw.svg"))
-                            .accessibility_label("Refresh dashboard")
-                            .tooltip("Refresh dashboard")
-                            .loading(fetching)
-                            .loading_icon(Icon::empty().path("icons/refresh-cw.svg"))
-                            .ghost()
-                            .xsmall()
-                            .on_click(move |_, _, cx| {
-                                refresh_entity
-                                    .update(cx, |dashboard, cx| dashboard.refresh_now(cx));
-                            }),
-                    ),
-            )
-        })
+        .child(header)
         .child(
             div()
                 .v_flex()

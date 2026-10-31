@@ -511,7 +511,7 @@ async fn run(
                     )
                     .await
                     {
-                        Ok(result) => result.map_err(|error| error.to_string()),
+                        Ok(result) => result.map_err(|error| format!("{error:#}")),
                         Err(_) => Err("Loading notifications timed out.".into()),
                     };
                     let _ = response.send(result);

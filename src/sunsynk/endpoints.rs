@@ -92,8 +92,11 @@ impl SunsynkClient {
             .context("SunSynk notification response did not contain data.infos.records")?;
         records
             .iter()
-            .cloned()
-            .map(serde_json::from_value)
+            .enumerate()
+            .map(|(index, record)| {
+                serde_json::from_value(record.clone())
+                    .with_context(|| format!("notification record {index}"))
+            })
             .collect::<Result<Vec<_>, _>>()
             .context("could not parse SunSynk notification records")
     }

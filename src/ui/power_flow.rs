@@ -454,13 +454,21 @@ fn flow_arrow(
             .items_center()
             .gap_1()
             .child(line)
-            .child(div().text_lg().child("→")),
+            .child(
+                Icon::new(gpui_kit::assets::IconName::ArrowRight)
+                    .size_4()
+                    .text_color(theme.muted_foreground),
+            ),
         Some(false) => div()
             .h(px(80.))
             .h_flex()
             .items_center()
             .gap_1()
-            .child(div().text_lg().child("←"))
+            .child(
+                Icon::new(gpui_kit::assets::IconName::ArrowLeft)
+                    .size_4()
+                    .text_color(theme.muted_foreground),
+            )
             .child(line),
         None => div().h(px(80.)).h_flex().items_center().child(line),
     }
@@ -506,7 +514,7 @@ fn flow_line(
                     } else {
                         1. - ((delta + phase) % 1.)
                     };
-                    this.left(relative(position))
+                    this.left(relative(position)).ml(px(-4. * position))
                 },
             ),
     )

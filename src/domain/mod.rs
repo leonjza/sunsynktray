@@ -1,4 +1,5 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::Value;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub(crate) struct EnergySnapshot {
@@ -52,22 +53,97 @@ pub(crate) struct InverterSummary {
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct NotificationMessage {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_string")]
     pub(crate) id: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_string")]
     pub(crate) sn: String,
-    #[serde(rename = "type")]
+    #[serde(
+        rename = "type",
+        default,
+        deserialize_with = "deserialize_optional_i64"
+    )]
     pub(crate) notice_type: Option<i64>,
+    #[serde(default, deserialize_with = "deserialize_optional_i64")]
     pub(crate) status: Option<i64>,
-    #[serde(rename = "messageType")]
+    #[serde(
+        rename = "messageType",
+        default,
+        deserialize_with = "deserialize_optional_i64"
+    )]
     pub(crate) message_type: Option<i64>,
+    #[serde(default, deserialize_with = "deserialize_optional_i64")]
     pub(crate) time: Option<i64>,
+    #[serde(default, deserialize_with = "deserialize_optional_string")]
     pub(crate) create_at: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_optional_string")]
     pub(crate) update_at: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_optional_string")]
     pub(crate) station_name: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_optional_f64")]
     pub(crate) soc: Option<f64>,
+    #[serde(default, deserialize_with = "deserialize_optional_string")]
     pub(crate) description: Option<String>,
-    #[serde(rename = "noticeTittle")]
+    #[serde(
+        rename = "noticeTittle",
+        default,
+        deserialize_with = "deserialize_optional_string"
+    )]
     pub(crate) notice_title: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_optional_string")]
     pub(crate) notice_description: Option<String>,
+}
+
+fn deserialize_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(Option::<Value>::deserialize(deserializer)?
+        .and_then(value_string)
+        .unwrap_or_default())
+}
+
+fn deserialize_optional_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(Option::<Value>::deserialize(deserializer)?.and_then(value_string))
+}
+
+fn value_string(value: Value) -> Option<String> {
+    match value {
+        Value::String(value) => Some(value),
+        Value::Number(value) => Some(value.to_string()),
+        _ => None,
+    }
+}
+
+fn deserialize_optional_i64<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(
+        Option::<Value>::deserialize(deserializer)?.and_then(|value| match value {
+            Value::Number(value) => value
+                .as_i64()
+                .or_else(|| value.as_u64().and_then(|value| i64::try_from(value).ok())),
+            Value::String(value) => value.trim().parse().ok(),
+            _ => None,
+        }),
+    )
+}
+
+fn deserialize_optional_f64<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(
+        Option::<Value>::deserialize(deserializer)?.and_then(|value| {
+            let number = match value {
+                Value::Number(value) => value.as_f64(),
+                Value::String(value) => value.trim().parse().ok(),
+                _ => None,
+            }?;
+            number.is_finite().then_some(number)
+        }),
+    )
 }

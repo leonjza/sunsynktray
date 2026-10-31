@@ -52,6 +52,7 @@ pub(crate) struct Dashboard {
     notification_window: Arc<Mutex<Option<AnyWindowHandle>>>,
     startup_error: Option<String>,
     refresh_interval_error: Option<String>,
+    history_days_error: Option<String>,
     credentials_synced: bool,
     history_days_generation: Arc<AtomicU64>,
     history_date_picker: Entity<DatePickerState>,
@@ -107,6 +108,7 @@ impl Dashboard {
             startup_generation: 0,
             notification_window: Arc::new(Mutex::new(None)),
             refresh_interval_error: None,
+            history_days_error: None,
             credentials_synced: false,
             history_days_generation: history_days_generation.clone(),
             history_date_picker: history_date_picker.clone(),
@@ -138,7 +140,10 @@ impl Dashboard {
         .detach();
         let dashboard_entity = cx.entity().clone();
         let history_days_debounce = Arc::new(Mutex::new(None));
-        cx.observe(&history_days_observed, move |_, _, cx| {
+        cx.observe(&history_days_observed, move |dashboard, _, cx| {
+            if dashboard.history_days_error.take().is_some() {
+                cx.notify();
+            }
             let generation = history_days_generation.fetch_add(1, Ordering::AcqRel) + 1;
             let (cancel_sender, cancel_receiver) = tokio::sync::oneshot::channel();
             let previous_cancel = history_days_debounce
@@ -292,6 +297,11 @@ impl Dashboard {
         self.refresh_interval_error = error;
         cx.notify();
     }
+
+    pub(crate) fn set_history_days_error(&mut self, error: Option<String>, cx: &mut Context<Self>) {
+        self.history_days_error = error;
+        cx.notify();
+    }
     pub(crate) fn set_tray_metric(&mut self, metric: Option<TrayMetric>, cx: &mut Context<Self>) {
         self.controller
             .update(cx, |controller, cx| controller.set_tray_metric(metric, cx));
@@ -307,6 +317,7 @@ impl Dashboard {
         cx: &mut Context<Self>,
     ) {
         self.refresh_interval_error = None;
+        self.history_days_error = None;
         self.controller.update(cx, |controller, cx| {
             controller.reconnect(email, password, refresh_seconds, history_days, cx)
         });
