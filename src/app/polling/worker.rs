@@ -24,6 +24,7 @@ struct LiveTaskResult {
     result: anyhow::Result<(
         crate::domain::EnergySnapshot,
         Option<Vec<crate::domain::HistorySeries>>,
+        Option<bool>,
     )>,
     notification_count: Option<u64>,
     refresh_token: Option<String>,
@@ -234,10 +235,11 @@ async fn run(
                 let succeeded = result.is_ok();
                 let retry_in = next_retry_delay(succeeded, interval, retry_delay);
                 let result = result
-                    .map(|(snapshot, history)| PollResult::Snapshot {
+                    .map(|(snapshot, history, limit_to_load)| PollResult::Snapshot {
                         snapshot,
                         refresh_token,
                         history,
+                        limit_to_load,
                     })
                     .unwrap_or_else(|error| PollResult::Failure {
                         generation,
@@ -442,6 +444,48 @@ async fn run(
             Some(Ok(Some(Command::Refresh))) => {
                 // Make the scheduled-refresh path pick this up immediately.
                 next_refresh_at = Instant::now();
+            }
+            Some(Ok(Some(Command::SetLimitToLoad { enabled }))) => {
+                let write_client = client.clone();
+                let write_serial = serial.clone();
+                let write_sender = sender.clone();
+                tokio::spawn(async move {
+                    let result = async {
+                        write_client.set_limit_to_load(&write_serial, enabled).await?;
+                        let deadline = tokio::time::Instant::now() + Duration::from_secs(300);
+                        loop {
+                            tokio::time::sleep(Duration::from_secs(15)).await;
+                            let value = match write_client.get_authenticated(
+                                &format!("/api/v1/common/setting/{write_serial}/read"), None
+                            ).await {
+                                Ok(value) => value,
+                                Err(error) => {
+                                    if tokio::time::Instant::now() >= deadline {
+                                        anyhow::bail!("could not verify inverter mode: {error}");
+                                    }
+                                    continue;
+                                }
+                            };
+                            let mode = value.get("data").and_then(|d| d.get("sysWorkMode"));
+                            let confirmed = match mode {
+                                Some(serde_json::Value::String(v)) => v == if enabled { "1" } else { "2" },
+                                Some(serde_json::Value::Number(v)) => v.as_i64() == Some(if enabled { 1 } else { 2 }),
+                                _ => false,
+                            };
+                            if confirmed { return Ok(()); }
+                            if tokio::time::Instant::now() >= deadline {
+                                anyhow::bail!("inverter did not confirm the requested mode within five minutes");
+                            }
+                        }
+                    }.await.map_err(|error: anyhow::Error| error.to_string());
+                    let _ = write_sender
+                        .send(PollResult::LimitToLoadWrite {
+                            serial: write_serial,
+                            enabled,
+                            result,
+                        })
+                        .await;
+                });
             }
             Some(Ok(Some(Command::InspectEndpoint {
                 path,

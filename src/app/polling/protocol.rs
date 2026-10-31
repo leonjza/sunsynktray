@@ -28,6 +28,12 @@ pub(crate) enum PollResult {
         snapshot: EnergySnapshot,
         refresh_token: Option<String>,
         history: Option<Vec<HistorySeries>>,
+        limit_to_load: Option<bool>,
+    },
+    LimitToLoadWrite {
+        serial: String,
+        enabled: bool,
+        result: Result<(), String>,
     },
     NotificationCount {
         count: u64,
@@ -51,6 +57,9 @@ pub(crate) enum PollResult {
 
 pub(crate) enum Command {
     Refresh,
+    SetLimitToLoad {
+        enabled: bool,
+    },
     InspectEndpoint {
         path: String,
         params: Vec<(String, String)>,

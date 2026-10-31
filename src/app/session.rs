@@ -117,9 +117,10 @@ impl MonitorController {
             };
             let refresh_future = async {
                 match (selected.as_deref(), selected_plant_id) {
-                    (Some(serial), Some(plant_id)) => {
-                        client.refresh_plant(plant_id, serial, true).await.map(Some)
-                    }
+                    (Some(serial), Some(plant_id)) => client
+                        .refresh_plant(plant_id, serial, true)
+                        .await
+                        .map(|(s, h, _)| Some((s, h))),
                     _ => Ok(None),
                 }
             };
@@ -248,6 +249,7 @@ impl MonitorController {
                             }
                         }
                         ConnectResult::PollStarted => {}
+                        ConnectResult::LimitToLoadWrite { .. } => {}
                         ConnectResult::NotificationCount { .. } => {}
                         ConnectResult::Progress {
                             generation,
@@ -265,6 +267,7 @@ impl MonitorController {
                             snapshot,
                             refresh_token,
                             history,
+                            ..
                         } => {
                             dashboard.apply_live_data(snapshot, refresh_token, history, cx);
                             dashboard.fetching = false;

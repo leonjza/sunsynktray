@@ -104,6 +104,9 @@ impl Render for Dashboard {
                     controller.notification_count,
                     self.notification_window.clone(),
                     self.compact_view,
+                    controller.limit_to_load,
+                    controller.limit_write_pending,
+                    controller.limit_write_error.clone(),
                 ),
                 Screen::Settings => settings_view::render(SettingsView {
                     theme,

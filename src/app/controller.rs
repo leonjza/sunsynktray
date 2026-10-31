@@ -56,12 +56,27 @@ pub(crate) struct MonitorController {
     pub(crate) history_is_manual: bool,
     pub(crate) history_previous_date: Option<chrono::NaiveDate>,
     pub(crate) credentials_loaded: bool,
+    pub(crate) limit_to_load: Option<bool>,
+    pub(crate) limit_write_pending: bool,
+    pub(crate) limit_write_error: Option<String>,
 }
 
 pub(crate) struct MonitorControllerGlobal(pub Entity<MonitorController>);
 impl Global for MonitorControllerGlobal {}
 
 impl MonitorController {
+    pub(crate) fn request_limit_to_load(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        if self.limit_write_pending {
+            return;
+        }
+        self.limit_write_pending = true;
+        self.limit_write_error = None;
+        if !self.send_poll_command(PollCommand::SetLimitToLoad { enabled }, cx) {
+            self.limit_write_pending = false;
+            self.limit_write_error = Some("Could not queue the inverter setting change.".into());
+        }
+    }
+
     pub(crate) fn new(state: Arc<MonitorState>) -> Self {
         let has_cached_data = state.has_live_data();
         Self {
@@ -112,6 +127,9 @@ impl MonitorController {
             history_is_manual: false,
             history_previous_date: None,
             credentials_loaded: false,
+            limit_to_load: None,
+            limit_write_pending: false,
+            limit_write_error: None,
         }
     }
 

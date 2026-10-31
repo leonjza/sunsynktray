@@ -1,7 +1,15 @@
-use crate::{app::Dashboard, domain::EnergySnapshot, ui::format::format_power};
-use gpui_kit::component::{tooltip::Tooltip, Icon, IconName, StyledExt, Theme};
+use crate::{
+    app::{Dashboard, MonitorController},
+    domain::EnergySnapshot,
+    ui::format::format_power,
+};
+use gpui_kit::component::{
+    badge::Badge,
+    button::{Button, ButtonVariants},
+    popover::Popover,
+    Disableable, Icon, IconName, Sizable, StyledExt, Theme,
+};
 use gpui_kit::prelude::FluentBuilder;
-use gpui_kit::InteractiveElement;
 use gpui_kit::*;
 use std::time::Duration;
 
@@ -11,6 +19,10 @@ pub(crate) fn render(
     connected: bool,
     fetching: bool,
     entity: Entity<Dashboard>,
+    limit_to_load: Option<bool>,
+    limit_pending: bool,
+    limit_error: Option<String>,
+    controller: Entity<MonitorController>,
 ) -> impl IntoElement {
     let battery_direction = (snapshot.battery_watts.abs() > 1.0).then(|| {
         snapshot
@@ -48,6 +60,7 @@ pub(crate) fn render(
                     None,
                     None,
                     None,
+                    None,
                 ))
                 .child(flow_node(
                     theme,
@@ -60,6 +73,7 @@ pub(crate) fn render(
                     } else {
                         format_power(snapshot.battery_watts)
                     },
+                    None,
                     None,
                     None,
                     None,
@@ -109,6 +123,13 @@ pub(crate) fn render(
                     None,
                     None,
                     None,
+                    Some(limit_to_load_control(
+                        theme,
+                        limit_to_load,
+                        limit_pending,
+                        limit_error.clone(),
+                        controller.clone(),
+                    )),
                 ))
                 .child(flow_node(
                     theme,
@@ -120,6 +141,7 @@ pub(crate) fn render(
                     snapshot.grid_connected,
                     snapshot.grid_voltage,
                     snapshot.grid_frequency,
+                    None,
                 )),
         )
 }
@@ -144,6 +166,7 @@ fn flow_node(
     connected: Option<bool>,
     voltage: Option<f64>,
     frequency: Option<f64>,
+    accessory: Option<AnyElement>,
 ) -> impl IntoElement {
     div()
         .v_flex()
@@ -192,31 +215,24 @@ fn flow_node(
                         true => rgb(0x34c759),
                         false => rgb(0xff453a),
                     };
-                    let state = state.to_owned();
                     row.child(
-                        div()
-                            .size(px(16.))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .id("grid-status-indicator")
-                            .child(div().size(px(8.)).rounded_full().bg(color))
-                            .tooltip(move |window, cx| {
-                                let state = state.clone();
-                                let voltage = voltage_text.clone();
-                                let frequency = frequency_text.clone();
-                                Tooltip::element(move |_, _| {
-                                    div()
-                                        .v_flex()
-                                        .gap_1()
-                                        .child(format!("Grid {state}"))
-                                        .child(format!("Voltage: {voltage}"))
-                                        .child(format!("Frequency: {frequency}"))
-                                })
-                                .build(window, cx)
-                            }),
+                        Button::new("grid-status-indicator")
+                            .child(
+                                Badge::new()
+                                    .dot()
+                                    .color(color)
+                                    .small()
+                                    .child(div().size_2()),
+                            )
+                            .accessibility_label(format!("Grid {state}"))
+                            .tooltip(format!(
+                                "Grid {state} · Voltage: {voltage_text} · Frequency: {frequency_text}"
+                            ))
+                            .ghost()
+                            .xsmall(),
                     )
-                }),
+                })
+                .when_some(accessory, |row, accessory| row.child(accessory)),
         )
         .child(div().text_lg().font_weight(FontWeight::MEDIUM).child(value))
         .child(
@@ -227,33 +243,122 @@ fn flow_node(
         )
 }
 
+fn limit_to_load_control(
+    theme: &Theme,
+    mode: Option<bool>,
+    pending: bool,
+    error: Option<String>,
+    controller: Entity<MonitorController>,
+) -> AnyElement {
+    let label = match mode {
+        Some(true) => "On",
+        Some(false) => "Off",
+        None => "Unknown",
+    };
+    let color = if pending {
+        theme.muted_foreground
+    } else {
+        match mode {
+            Some(true) => rgb(0x34c759).into(),
+            Some(false) => rgb(0xffcc00).into(),
+            None => theme.muted_foreground,
+        }
+    };
+    let tooltip = match mode {
+        Some(true) => "Limit to load is on · Click to turn it off",
+        Some(false) => "Limit to load is off · Click to turn it on",
+        None => "Limit to load state unavailable",
+    };
+    let target = mode.map(|enabled| !enabled);
+    let house_icon = Icon::empty().path("icons/house.svg").text_color(color);
+    let house = if pending {
+        div()
+            .child(house_icon)
+            .with_animation(
+                "limit-to-load-pulse",
+                Animation::new(Duration::from_millis(900))
+                    .repeat()
+                    .with_easing(ease_in_out),
+                |icon, progress| icon.opacity(0.35 + progress * 0.65),
+            )
+            .into_any_element()
+    } else {
+        div().child(house_icon).into_any_element()
+    };
+    let trigger = Button::new("limit-to-load-trigger")
+        .child(house)
+        .accessibility_label(format!("Limit to load · {label}"))
+        .tooltip(tooltip)
+        .ghost()
+        .xsmall()
+        .disabled(mode.is_none() || pending);
+    let content_controller = controller.clone();
+
+    Popover::new("limit-to-load-popover")
+        .trigger(trigger)
+        .content(move |_, _, _| {
+            let current = mode;
+            let proposal = target;
+            let apply_controller = content_controller.clone();
+            div()
+                .v_flex()
+                .gap_2()
+                .w(px(230.))
+                .child(
+                    div()
+                        .h_flex()
+                        .items_center()
+                        .justify_between()
+                        .gap_3()
+                        .child(div().text_sm().child(match proposal {
+                            Some(true) => "Turn Limit to load on?",
+                            Some(false) => "Turn Limit to load off?",
+                            None => "Limit to load state unavailable",
+                        }))
+                        .child(
+                            Button::new("limit-to-load-confirm")
+                                .label(if pending { "Applying…" } else { "Confirm" })
+                                .small()
+                                .success()
+                                .disabled(pending || current.is_none() || proposal.is_none())
+                                .on_click(move |_, _, cx| {
+                                    apply_controller.update(cx, |controller, cx| {
+                                        if controller.limit_write_pending {
+                                            return;
+                                        }
+                                        if let Some(enabled) =
+                                            controller.limit_to_load.map(|current| !current)
+                                        {
+                                            controller.request_limit_to_load(enabled, cx);
+                                        }
+                                        cx.notify();
+                                    });
+                                }),
+                        ),
+                )
+                .when_some(error.clone(), |el, error| {
+                    el.child(div().text_xs().child(error))
+                })
+        })
+        .into_any_element()
+}
+
 fn inverter_node(
     theme: &Theme,
     connected: bool,
     fetching: bool,
     entity: Entity<Dashboard>,
 ) -> impl IntoElement {
-    let mut node = div()
-        .v_flex()
-        .items_center()
-        .justify_center()
-        .w(px(76.))
-        .h(px(144.))
-        .bg(theme.muted)
-        .rounded(theme.radius);
-    node.interactivity().on_click(move |_, _, cx| {
-        entity.update(cx, |dashboard, cx| dashboard.refresh_now(cx));
-    });
-    let status_color = if connected {
-        rgb(0x34c759).into()
-    } else {
-        theme.muted_foreground
-    };
-    let mut status = div()
-        .relative()
-        .size_3()
-        .flex_none()
-        .child(div().absolute().inset_0().rounded_full().bg(status_color));
+    let mut status =
+        div()
+            .relative()
+            .size_3()
+            .flex_none()
+            .child(div().absolute().inset_0().rounded_full().bg(if connected {
+                rgb(0x34c759).into()
+            } else {
+                theme.muted_foreground
+            }));
     if fetching {
         status = div()
             .relative()
@@ -268,8 +373,24 @@ fn inverter_node(
                 "refresh-inverter-3",
             ]));
     }
-    node.child(status)
-        .child(div().text_xs().mt_2().child("Inverter"))
+
+    Button::new("refresh-inverter")
+        .ghost()
+        .w(px(76.))
+        .h(px(144.))
+        .rounded(theme.radius)
+        .bg(theme.muted)
+        .on_click(move |_, _, cx| {
+            entity.update(cx, |dashboard, cx| dashboard.refresh_now(cx));
+        })
+        .child(
+            div()
+                .v_flex()
+                .items_center()
+                .justify_center()
+                .child(status)
+                .child(div().text_xs().mt_2().child("Inverter")),
+        )
 }
 
 fn loading_dots(ids: [&'static str; 3]) -> impl IntoElement {

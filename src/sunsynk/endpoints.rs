@@ -3,7 +3,7 @@ use super::{
 };
 use crate::domain::{EnergySnapshot, HistorySeries, InverterSummary, NotificationMessage};
 use anyhow::{anyhow, bail, Context, Result};
-use futures_util::future::join4;
+use futures_util::future::{join, join4};
 use serde_json::Value;
 
 impl SunsynkClient {
@@ -110,7 +110,7 @@ impl SunsynkClient {
         plant_id: i64,
         serial: &str,
         include_today_history: bool,
-    ) -> Result<(EnergySnapshot, Option<Vec<HistorySeries>>)> {
+    ) -> Result<(EnergySnapshot, Option<Vec<HistorySeries>>, Option<bool>)> {
         let today = chrono::Local::now().date_naive().to_string();
         // Authenticate once, then fetch the independent readings in
         // parallel. Each clone shares reqwest's connection pool while keeping
@@ -120,12 +120,14 @@ impl SunsynkClient {
         let flow_path = format!("/api/v1/plant/energy/{plant_id}/flow");
         let day_path = format!("/api/v1/plant/energy/{plant_id}/day");
         let grid_path = format!("/api/v1/inverter/grid/{serial}/realtime");
+        let settings_path = format!("/api/v1/common/setting/{serial}/read");
         let mut responses = self
             .parallel_readings(
                 &realtime_path,
                 &flow_path,
                 &day_path,
                 &grid_path,
+                &settings_path,
                 serial,
                 plant_id,
                 &today,
@@ -147,6 +149,7 @@ impl SunsynkClient {
                     &flow_path,
                     &day_path,
                     &grid_path,
+                    &settings_path,
                     serial,
                     plant_id,
                     &today,
@@ -154,7 +157,7 @@ impl SunsynkClient {
                 )
                 .await?;
         }
-        let [realtime, flow, day, grid] = responses;
+        let [realtime, flow, day, grid, settings] = responses;
         // Flow is the authoritative live-state response. Keep the live
         // dashboard usable if an auxiliary energy endpoint is unavailable.
         let realtime = match realtime {
@@ -196,7 +199,23 @@ impl SunsynkClient {
                 Vec::new()
             }
         };
-        Ok((snapshot, (!history.is_empty()).then_some(history)))
+        let limit_to_load = settings.ok().and_then(|response| {
+            response
+                .get("data")?
+                .get("sysWorkMode")
+                .and_then(|mode| match mode {
+                    Value::String(mode) if mode == "1" => Some(true),
+                    Value::String(mode) if mode == "2" => Some(false),
+                    Value::Number(mode) if mode.as_i64() == Some(1) => Some(true),
+                    Value::Number(mode) if mode.as_i64() == Some(2) => Some(false),
+                    _ => None,
+                })
+        });
+        Ok((
+            snapshot,
+            (!history.is_empty()).then_some(history),
+            limit_to_load,
+        ))
     }
 
     async fn parallel_readings(
@@ -205,18 +224,21 @@ impl SunsynkClient {
         flow_path: &str,
         day_path: &str,
         grid_path: &str,
+        settings_path: &str,
         serial: &str,
         plant_id: i64,
         today: &str,
         include_today_history: bool,
-    ) -> Result<[Result<Value>; 4]> {
+    ) -> Result<[Result<Value>; 5]> {
         let realtime_client = self.clone();
         let flow_client = self.clone();
         let day_client = self.clone();
         let grid_client = self.clone();
+        let settings_client = self.clone();
         let realtime_path = realtime_path.to_owned();
         let flow_path = flow_path.to_owned();
         let day_path = day_path.to_owned();
+        let settings_path = settings_path.to_owned();
         let today = today.to_owned();
         let serial = serial.to_owned();
         let realtime = async move {
@@ -254,8 +276,69 @@ impl SunsynkClient {
             .await
             .map_err(|_| anyhow!("SunSynk grid realtime request timed out"))?
         };
-        let (realtime, flow, day, grid) = join4(realtime, flow, day, grid).await;
-        Ok([realtime, flow, day, grid])
+        let settings = async move {
+            tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                settings_client.get_authenticated(&settings_path, None),
+            )
+            .await
+            .map_err(|_| anyhow!("SunSynk settings request timed out"))?
+        };
+        let ((realtime, flow, day, grid), settings) =
+            join(join4(realtime, flow, day, grid), settings).await;
+        Ok([realtime, flow, day, grid, settings])
+    }
+
+    pub(crate) async fn set_limit_to_load(&self, serial: &str, enabled: bool) -> Result<()> {
+        let response = self
+            .get_authenticated(&format!("/api/v1/common/setting/{serial}/read"), None)
+            .await?;
+        let settings = response
+            .get("data")
+            .and_then(Value::as_object)
+            .ok_or_else(|| anyhow!("SunSynk settings response had no data object"))?;
+        let keys = [
+            "safetyType",
+            "battMode",
+            "solarSell",
+            "pvMaxLimit",
+            "energyMode",
+            "peakAndVallery",
+            "sysWorkMode",
+            "zeroExportPower",
+            "solarMaxSellPower",
+            "mondayOn",
+            "tuesdayOn",
+            "wednesdayOn",
+            "thursdayOn",
+            "fridayOn",
+            "saturdayOn",
+            "sundayOn",
+            "genTime1on",
+            "genTime2on",
+            "genTime3on",
+            "genTime4on",
+            "genTime5on",
+            "genTime6on",
+        ];
+        let mut payload = serde_json::Map::new();
+        for key in keys {
+            if let Some(value) = settings.get(key) {
+                payload.insert(key.into(), value.clone());
+            }
+        }
+        payload.insert("sn".into(), Value::String(serial.to_owned()));
+        payload.insert(
+            "sysWorkMode".into(),
+            Value::String(if enabled { "1" } else { "2" }.into()),
+        );
+        self.post(
+            &format!("/api/v1/common/setting/{serial}/set"),
+            None,
+            Some(&Value::Object(payload)),
+        )
+        .await?;
+        Ok(())
     }
 
     pub async fn inspect_endpoint(

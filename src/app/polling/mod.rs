@@ -218,8 +218,26 @@ impl MonitorController {
                                 snapshot,
                                 refresh_token,
                                 history,
+                                limit_to_load,
                             } => {
+                                controller.limit_to_load = limit_to_load;
                                 controller.apply_snapshot(snapshot, refresh_token, history, cx);
+                            }
+                            ConnectResult::LimitToLoadWrite {
+                                serial,
+                                enabled,
+                                result,
+                            } => {
+                                if controller.selected_serial.as_deref() == Some(serial.as_str()) {
+                                    controller.limit_write_pending = false;
+                                    if result.is_ok() {
+                                        controller.limit_to_load = Some(enabled);
+                                        controller.limit_write_error = None;
+                                    } else {
+                                        controller.limit_write_error = result.err();
+                                    }
+                                    cx.notify();
+                                }
                             }
                             ConnectResult::NotificationCount { count } => {
                                 controller.notification_count = Some(count);
@@ -331,6 +349,9 @@ impl MonitorController {
             return;
         }
         self.selected_serial = Some(serial.clone());
+        self.limit_to_load = None;
+        self.limit_write_pending = false;
+        self.limit_write_error = None;
         crate::storage::settings::save_selected_serial_async(serial);
         if !self.polling {
             self.activity = "Inverter selected".into();

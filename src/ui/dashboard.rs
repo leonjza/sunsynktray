@@ -35,6 +35,9 @@ pub(crate) fn render(
     notification_count: Option<u64>,
     notification_window: Arc<Mutex<Option<AnyWindowHandle>>>,
     compact_view: bool,
+    limit_to_load: Option<bool>,
+    limit_pending: bool,
+    limit_error: Option<String>,
 ) -> AnyElement {
     if matches!(connection, ConnectionState::Connecting) {
         return dashboard_placeholder(theme, entity, true, None);
@@ -49,7 +52,7 @@ pub(crate) fn render(
     let snapshot = &data.snapshot;
     let live = matches!(connection, ConnectionState::Connected);
     let refresh_entity = entity.clone();
-    let notification_controller = controller;
+    let notification_controller = controller.clone();
     let notification_window_handle = notification_window;
     let unread_count = notification_count.unwrap_or(0);
     let notification_tooltip = format!("Notifications · {unread_count} unread");
@@ -174,6 +177,10 @@ pub(crate) fn render(
                     live,
                     fetching,
                     entity.clone(),
+                    limit_to_load,
+                    limit_pending,
+                    limit_error,
+                    controller.clone(),
                 )),
         )
         .when(!compact_view, |dashboard| {
