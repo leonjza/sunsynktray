@@ -84,6 +84,7 @@ async fn run(
     sender: tokio::sync::mpsc::Sender<PollResult>,
 ) {
     const BACKFILL_INTERVAL: Duration = Duration::from_secs(15);
+    const MAX_BACKFILL_ATTEMPTS: u8 = 2;
     let generation = config.generation;
     let mut serial = config.serial;
     let mut plant_id = config.plant_id;
@@ -117,6 +118,7 @@ async fn run(
             }
         })
         .unwrap_or(yesterday);
+    let mut backfill_attempts: u8 = 0;
     let mut backfill_completed = yesterday
         .signed_duration_since(backfill_date)
         .num_days()
@@ -324,6 +326,7 @@ async fn run(
                         date,
                         result: Ok(()),
                     }) if date == backfill_date => {
+                        backfill_attempts = 0;
                         backfill_completed += 1;
                         backfill_date = date - chrono::Duration::days(1);
                         let complete = backfill_completed >= total_backfill;
@@ -345,7 +348,7 @@ async fn run(
                             PollResult::BackfillProgress {
                                 completed: backfill_completed,
                                 total: total_backfill,
-                                running: true,
+                                running: backfill_running,
                                 detail: if complete {
                                     "Up to date".into()
                                 } else {
@@ -365,44 +368,42 @@ async fn run(
                         date,
                         result: Err(error),
                     }) => {
-                        let transport_error = is_transport_error(&error);
-                        let incomplete_history =
-                            error.to_string().starts_with("incomplete history day:");
+                        let attempt_error = error.to_string();
+                        backfill_attempts = backfill_attempts.saturating_add(1);
+                        let retry = backfill_attempts < MAX_BACKFILL_ATTEMPTS;
                         next_backfill_at = Instant::now() + BACKFILL_INTERVAL;
-                        if !transport_error && !incomplete_history {
+                        if !retry {
                             backfill_completed += 1;
                             backfill_date = date - chrono::Duration::days(1);
+                            backfill_attempts = 0;
                         }
-                        if !transport_error
-                            && !incomplete_history
-                            && backfill_completed >= total_backfill
-                        {
-                            backfill_running = false;
-                        }
+                        backfill_running = backfill_completed < total_backfill;
                         let complete = !backfill_running;
+                        let skipped_detail = format!("Skipped {date} after {MAX_BACKFILL_ATTEMPTS} attempts: {attempt_error}");
                         save_backfill(
                             &serial,
-                            if transport_error || incomplete_history {
-                                date
-                            } else {
-                                backfill_date
-                            },
+                            backfill_date,
                             oldest_date,
                             if complete { "complete" } else { "running" },
-                            (transport_error || incomplete_history).then(|| error.to_string()),
+                            retry.then(|| attempt_error.clone()),
                         );
+                        if !retry {
+                            tracing::warn!(%date, %attempt_error, "skipping history day after maximum backfill attempts");
+                        }
                         if !send_cancellable(
                             &sender,
                             PollResult::BackfillProgress {
                                 completed: backfill_completed,
                                 total: total_backfill,
-                                running: true,
-                                detail: if complete {
+                                running: backfill_running,
+                                detail: if !retry {
+                                    skipped_detail
+                                } else if error.to_string().starts_with("incomplete history day:") {
+                                    format!("Incomplete data for {date}; retrying (attempt {backfill_attempts}/{MAX_BACKFILL_ATTEMPTS})")
+                                } else if is_transport_error(&error) {
+                                    format!("Failed {date}: {error}; retrying (attempt {backfill_attempts}/{MAX_BACKFILL_ATTEMPTS})")
+                                } else if complete {
                                     "Up to date".into()
-                                } else if incomplete_history {
-                                    format!("Incomplete data for {date}; will retry")
-                                } else if transport_error {
-                                    format!("Failed {date}: {error}; will retry")
                                 } else {
                                     format!("Skipped {date}: {error}")
                                 },
@@ -429,6 +430,7 @@ async fn run(
             oldest_date = current_today - chrono::Duration::days(total_backfill as i64);
             backfill_date = yesterday;
             backfill_completed = 0;
+            backfill_attempts = 0;
             next_backfill_at = Instant::now();
             next_today_history_at = Instant::now();
             save_backfill(
@@ -616,6 +618,7 @@ async fn run(
                     .signed_duration_since(backfill_date)
                     .num_days()
                     .max(0) as u64;
+                backfill_attempts = 0;
                 next_backfill_at = Instant::now();
                 next_today_history_at = Instant::now();
                 backfill_running = saved.as_ref().is_none_or(|state| state.status != "paused")
@@ -629,7 +632,7 @@ async fn run(
                     } else {
                         "paused"
                     },
-                    None,
+                    saved.as_ref().and_then(|state| state.last_error.clone()),
                 );
                 if !send_cancellable(
                     &sender,
@@ -715,6 +718,7 @@ async fn run(
                         oldest_date = today - chrono::Duration::days(total_backfill as i64);
                         backfill_date = yesterday;
                         backfill_completed = 0;
+                        backfill_attempts = 0;
                         backfill_running = total_backfill > 0;
                         next_backfill_at = Instant::now();
                         next_refresh_at = Instant::now();
